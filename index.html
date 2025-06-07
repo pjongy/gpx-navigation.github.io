@@ -91,12 +91,18 @@
         .modal-close-btn, .modal-confirm-btn { background: var(--button-bg-color); color: var(--primary-text-color); border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; }
         .modal-close-btn:hover, .modal-confirm-btn:hover { background-color: var(--button-active-bg-color); }
         .modal-confirm-btn { background-color: var(--accent-color); color: var(--bg-color); font-weight: bold; margin-left: 10px; }
-        .lang-switch { display: flex; align-items: center; cursor: pointer; }
-        .lang-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-switch { display: flex; align-items: center; cursor: pointer; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: relative; display: block; width: 50px; height: 26px; background-color: #ccc; border-radius: 26px; transition: .4s; }
-        .slider:before { position: absolute; content: "KO"; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; color: black; font-size: 10px; font-weight: bold; display: flex; justify-content: center; align-items: center; }
+        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; color: black; font-weight: bold; display: flex; justify-content: center; align-items: center; }
         input:checked + .slider { background-color: var(--accent-color); }
-        input:checked + .slider:before { transform: translateX(24px); content: "EN"; }
+        input:checked + .slider:before { transform: translateX(24px); }
+        /* Language Toggle Specifics */
+        #lang-toggle:not(:checked) + .slider:before { content: "KO"; font-size: 10px; }
+        #lang-toggle:checked + .slider:before { content: "EN"; font-size: 10px; }
+        /* Compass Toggle Specifics */
+        #invert-compass:not(:checked) + .slider:before { content: "-"; font-size: 18px; line-height: 1; }
+        #invert-compass:checked + .slider:before { content: "+"; font-size: 16px; line-height: 1;}
         #off-route-warning { position: absolute; top: 0; left: 0; width: 100%; background-color: rgba(139, 0, 0, 0.8); color: white; text-align: center; padding: 8px 0; font-weight: bold; z-index: 5; display: none; }
     </style>
 </head>
@@ -129,9 +135,9 @@
         <div class="menu-section"><h3 data-i18n="fileManagement">파일 관리</h3><label for="gpx-file-input" id="gpx-file-input-label" data-i18n="openGpxFile">GPX 파일 열기</label><input type="file" id="gpx-file-input" accept=".gpx"></div>
         <div class="menu-section"><h3 data-i18n="journeyLog">여정 기록</h3><button class="menu-btn" data-action="toggle-tracking" data-i18n="startTracking">추적 시작</button><button class="menu-btn" data-action="save-journey" data-i18n="saveJourneySummary" disabled>여정 요약 저장</button></div>
         <div class="menu-section"><h3 data-i18n="settings">설정</h3>
-            <div class="setting-item"><label for="update-interval" data-i18n="updateInterval">GPS 갱신 주기 (초)</label><select id="update-interval"><option value="1000">1</option><option value="5000" selected>5</option><option value="15000">15</option><option value="30000">30</option><option value="60000">60</option><option value="300000">300</option></select></div>
-            <div class="setting-item"><label for="invert-compass" data-i18n="invertCompass">나침반 방향 반전</label><label class="lang-switch"><input type="checkbox" id="invert-compass"><span class="slider"></span></label></div>
-            <div class="setting-item"><label data-i18n="language">언어</label><label class="lang-switch"><input type="checkbox" id="lang-toggle"><span class="slider"></span></label></div>
+            <div class="setting-item"><label for="update-interval" data-i18n="updateInterval">GPS 갱신 주기 (초)</label><select id="update-interval"><option value="1000">1</option><option value="5000">5</option><option value="15000" selected>15</option><option value="30000">30</option><option value="60000">60</option><option value="300000">300</option></select></div>
+            <div class="setting-item"><label for="invert-compass" data-i18n="invertCompass">나침반 방향 반전</label><label class="toggle-switch"><input type="checkbox" id="invert-compass"><span class="slider"></span></label></div>
+            <div class="setting-item"><label data-i18n="language">언어</label><label class="toggle-switch"><input type="checkbox" id="lang-toggle"><span class="slider"></span></label></div>
         </div>
         <div class="menu-section"><h3 data-i18n="diagnostics">진단 및 초기화</h3><button class="menu-btn" data-action="gps-test" data-i18n="gpsTest">GPS 테스트</button><button class="menu-btn" data-action="reset-all" data-i18n="resetAll" style="background-color: #5d2a2a;">모든 데이터 초기화</button></div>
     </div>
@@ -140,7 +146,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v9'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v10'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -156,7 +162,7 @@
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
                 position: { current: null, heading: 0, snapped: null, headingHistory: [] },
                 map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 },
-                settings: { updateInterval: 5000, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
+                settings: { updateInterval: 15000, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
             };
 
             const CONSTANTS = { EARTH_RADIUS_KM: 6371, HEADING_SMOOTHING_SAMPLES: 5, ZOOM_SCALES: [10, 100, 500, 1000, 5000, 'fit'] };
@@ -258,11 +264,11 @@
             const projectPoint = (lat, lon) => {
                 const { minLat, minLon, maxLat, maxLon } = state.gpx.bounds;
                 const mapSize = 10000;
-                const x = (lon - minLon) / (maxLon - minLon) * mapSize;
+                const x = (maxLon - minLon) === 0 ? mapSize / 2 : (lon - minLon) / (maxLon - minLon) * mapSize;
                 const mercN = Math.log(Math.tan((Math.PI / 4) + (toRad(lat) / 2)));
                 const minMercN = Math.log(Math.tan((Math.PI / 4) + (toRad(minLat) / 2)));
                 const maxMercN = Math.log(Math.tan((Math.PI / 4) + (toRad(maxLat) / 2)));
-                const y = (maxMercN - mercN) / (maxMercN - minMercN) * mapSize;
+                const y = (maxMercN - minMercN) === 0 ? mapSize / 2 : (maxMercN - mercN) / (maxMercN - minMercN) * mapSize;
                 return { x, y };
             };
             const projectAndRenderGpx = () => {
@@ -569,10 +575,10 @@
 
                     const defaultLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
                     state.settings.language = defaultLang;
-                    state.settings.updateInterval = 5000;
+                    state.settings.updateInterval = 15000;
                     state.settings.invertCompass = false;
                     
-                    app.updateIntervalSelect.value = '5000';
+                    app.updateIntervalSelect.value = '15000';
                     app.invertCompassToggle.checked = false;
                     setLanguage(defaultLang); 
 
