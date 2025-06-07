@@ -136,19 +136,17 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v7'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v8'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             const $ = (selector) => document.querySelector(selector);
             
-            // Cache DOM elements
             const app = {
                 infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
             };
 
-            // Application state management
             const state = {
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
@@ -159,7 +157,6 @@
 
             const CONSTANTS = { EARTH_RADIUS_KM: 6371, HEADING_SMOOTHING_SAMPLES: 5, ZOOM_SCALES: [10, 100, 500, 1000, 5000, 'fit'] };
             
-            // I18n strings
             const i18n = {
                 ko: {
                     currentSpeed: '현재 속도', totalDistance: '누적 거리', totalTime: '누적 시간', avgSpeed: '평균 속력',
@@ -196,7 +193,6 @@
                 }
             };
             
-            // Utility Functions
             const setLanguage = (lang) => {
                 state.settings.language = lang;
                 document.documentElement.lang = lang;
@@ -229,7 +225,6 @@
             };
             const hideModal = () => app.modal.classList.remove('show');
 
-            // GPX File Handling
             const handleGpxFile = (e) => {
                 const file = e.target.files[0]; if (!file) return;
                 const reader = new FileReader();
@@ -249,7 +244,6 @@
                 app.trackBtn.disabled = false;
             };
 
-            // Coordinate and Map Calculations
             const calculateGpxBounds = () => {
                  if (state.gpx.points.length === 0) return;
                  state.gpx.bounds = state.gpx.points.reduce((acc, p) => ({
@@ -299,7 +293,6 @@
                 return { point: closest, distance: haversineDistance(p, closest) };
             };
             
-            // GPS and Tracking Management
             const checkGpsPermission = async () => {
                 if (!navigator.permissions) return;
                 try {
@@ -355,7 +348,7 @@
                 state.position.snapped = closest.point;
 
                 const offRouteDistance = haversineDistance({ lat: latitude, lon: longitude }, closest.point);
-                state.tracking.isOffRoute = offRouteDistance > 0.1; // 100m
+                state.tracking.isOffRoute = offRouteDistance > 0.1; 
                 app.offRouteWarning.style.display = state.tracking.isOffRoute ? 'block' : 'none';
 
                 if (state.tracking.previousPoint) {
@@ -393,7 +386,6 @@
                 }
             };
 
-            // UI and Map Updates
             const updateDashboard = (speed, distance, time) => {
                 app.speedValue.textContent = speed ? (speed * 3.6).toFixed(1) : '0.0';
                 app.distanceValue.textContent = distance.toFixed(2);
@@ -433,8 +425,8 @@
                     finalMarkerY = screenMarkerY;
 
                     if (state.map.mode === 'head-up') {
-                        // Use stable T-R-T transform for centered head-up mode
-                        mapGroupTransform = `translate(${finalMarkerX}, ${finalMarkerY}) rotate(${-state.position.heading}) translate(${-projected.x}, ${-projected.y})`;
+                        // Inverting the rotation direction to counteract device-specific issues.
+                        mapGroupTransform = `translate(${finalMarkerX}, ${finalMarkerY}) rotate(${state.position.heading}) translate(${-projected.x}, ${-projected.y})`;
                     } else { 
                         mapGroupTransform = `translate(${finalMarkerX - projected.x}, ${finalMarkerY - projected.y})`;
                     }
@@ -443,10 +435,10 @@
                     finalMarkerY = projected.y;
 
                     if (state.map.mode === 'head-up') {
-                        // For panned head-up mode, rotate around the viewbox center
                         const centerX = vb.x + vb.width / 2;
                         const centerY = vb.y + vb.height / 2;
-                        mapGroupTransform = `rotate(${-state.position.heading}, ${centerX}, ${centerY})`;
+                        // Inverting the rotation direction here as well.
+                        mapGroupTransform = `rotate(${state.position.heading}, ${centerX}, ${centerY})`;
                     }
                 }
 
@@ -482,7 +474,6 @@
                 updateMap();
             };
 
-            // Event Handlers and Initialization
             const toggleMenu = () => { app.menuPanel.classList.toggle('open'); app.menuOverlay.classList.toggle('open'); };
             const handleAction = (e) => {
                 const target = e.target.closest('[data-action]');
@@ -548,47 +539,36 @@
             const resetData = (fullReset) => {
                 if (state.tracking.isActive) stopTracking();
 
-                // Reset tracking and position states
                 Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false });
                 Object.assign(state.position, { current: null, heading: 0, snapped: null, headingHistory: [] });
-                
-                // Reset map state
                 Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 });
 
-                // Reset UI rendering
                 app.userPath.setAttribute('d', '');
                 app.marker.setAttribute('visibility', 'hidden');
                 app.offRouteWarning.style.display = 'none';
-
-                // Reset dashboard
                 updateDashboard(0, 0, 0);
                 app.timeValue.textContent = '00:00:00';
                 
-                // Reset buttons
                 app.saveBtn.disabled = true;
                 app.mapModeBtn.classList.remove('active');
                 app.centerMapBtn.classList.add('active');
                 app.trackBtn.style.backgroundColor = '';
                 
-                // Reset map view
                 app.mapGroup.setAttribute('transform', '');
                 app.mapSvg.setAttribute('viewBox', '0 0 1000 1000');
                 
                 if (fullReset) {
-                    // Reset GPX data
                     Object.assign(state.gpx, { points: [], bounds: null, metersPerUnit: 1 });
                     app.gpxTrack.setAttribute('d', '');
                     app.trackBtn.disabled = true;
-                    app.gpxFileInput.value = ''; // Reset file input
+                    app.gpxFileInput.value = '';
 
-                    // Reset settings to default
                     const defaultLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
                     state.settings.language = defaultLang;
                     state.settings.updateInterval = 5000;
                     
-                    // Reset settings UI
                     app.updateIntervalSelect.value = '5000';
-                    setLanguage(defaultLang); // This will update the language and the toggle switch
+                    setLanguage(defaultLang); 
 
                     showModal('alert', 'resetSuccess');
                 }
@@ -632,7 +612,7 @@
                 
                 app.modal.onclick = (e) => { if (e.target.classList.contains('modal-close-btn') || e.target === app.modal) hideModal(); };
                 app.mapSvg.addEventListener('pointerdown', (e) => {
-                    if (e.button !== 0) return; // Left click only
+                    if (e.button !== 0) return;
                     state.map.panning.isDown = true;
                     state.map.panning.startX = e.clientX; state.map.panning.startY = e.clientY;
                     state.map.panning.vbX = state.map.viewBox.x; state.map.panning.vbY = state.map.viewBox.y;
