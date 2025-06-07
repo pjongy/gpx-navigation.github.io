@@ -177,7 +177,9 @@
             const CONSTANTS = { 
                 EARTH_RADIUS_KM: 6371, 
                 HEADING_SMOOTHING_SAMPLES: 5, 
-                ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, 'fit']
+                ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, 'fit'],
+                TARGET_MARKER_REAL_WORLD_HEIGHT_M: 10, // Desired real-world height of the marker in meters
+                ORIGINAL_MARKER_SVG_HEIGHT: 120 // Original height of the marker polygon in SVG units (60 - (-60))
             };
             
             const i18n = {
@@ -509,6 +511,22 @@
 
                 const projected = projectPoint(positionToProject.lat, positionToProject.lon);
                 
+                // Show marker once a valid position is available
+                // --- Marker size adjustment start ---
+                // Calculate the desired SVG height for the marker based on real-world meters per SVG unit
+                const desiredMarkerSvgHeight = CONSTANTS.TARGET_MARKER_REAL_WORLD_HEIGHT_M / state.gpx.metersPerUnit;
+
+                // Calculate the scaling factor for the marker's original dimensions
+                const scaleFactor = desiredMarkerSvgHeight / CONSTANTS.ORIGINAL_MARKER_SVG_HEIGHT;
+
+                // Recalculate scaled points for the polygon. Original points: 0,-60 45,60 -45,60
+                const p1_scaled = `0,${-60 * scaleFactor}`;
+                const p2_scaled = `${45 * scaleFactor},${60 * scaleFactor}`;
+                const p3_scaled = `${-45 * scaleFactor},${60 * scaleFactor}`;
+                app.marker.setAttribute('points', `${p1_scaled} ${p2_scaled} ${p3_scaled}`);
+                // --- Marker size adjustment end ---
+
+                // Show marker once a valid position is available
                 if (app.marker.getAttribute('visibility') === 'hidden') {
                     app.marker.setAttribute('visibility', 'visible');
                     if (state.gpx.points.length > 0) setZoom(2);
