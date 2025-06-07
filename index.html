@@ -97,10 +97,8 @@
         .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; color: black; font-weight: bold; display: flex; justify-content: center; align-items: center; }
         input:checked + .slider { background-color: var(--accent-color); }
         input:checked + .slider:before { transform: translateX(24px); }
-        /* Language Toggle Specifics */
         #lang-toggle:not(:checked) + .slider:before { content: "KO"; font-size: 10px; }
         #lang-toggle:checked + .slider:before { content: "EN"; font-size: 10px; }
-        /* Compass Toggle Specifics */
         #invert-compass:not(:checked) + .slider:before { content: "-"; font-size: 18px; line-height: 1; }
         #invert-compass:checked + .slider:before { content: "+"; font-size: 16px; line-height: 1;}
         #off-route-warning { position: absolute; top: 0; left: 0; width: 100%; background-color: rgba(139, 0, 0, 0.8); color: white; text-align: center; padding: 8px 0; font-weight: bold; z-index: 5; display: none; }
@@ -146,7 +144,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v10'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v11'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -162,6 +160,7 @@
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
                 position: { current: null, heading: 0, snapped: null, headingHistory: [] },
                 map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 },
+                screen: { orientation: 0 },
                 settings: { updateInterval: 15000, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
             };
 
@@ -377,11 +376,20 @@
                 showModal('error', 'gpsError');
                 scheduleNextPositionUpdate();
             };
+            
+            const handleOrientationChange = () => {
+                state.screen.orientation = window.orientation || (screen.orientation && screen.orientation.angle) || 0;
+            };
+
             const handleDeviceOrientation = (e) => {
                 if (state.map.mode !== 'head-up') return;
                 let rawHeading = e.webkitCompassHeading || e.alpha;
                 if (typeof rawHeading !== 'number' || isNaN(rawHeading)) return;
-                state.position.headingHistory.push(rawHeading);
+
+                let correctedHeading = (rawHeading + state.screen.orientation) % 360;
+                if (correctedHeading < 0) correctedHeading += 360;
+
+                state.position.headingHistory.push(correctedHeading);
                 if (state.position.headingHistory.length > CONSTANTS.HEADING_SMOOTHING_SAMPLES) {
                     state.position.headingHistory.shift();
                 }
@@ -607,6 +615,9 @@
                 setLanguage(userLang);
 
                 checkGpsPermission();
+                handleOrientationChange();
+                window.addEventListener('orientationchange', handleOrientationChange);
+
                 document.body.addEventListener('click', handleAction);
                 document.body.addEventListener('dblclick', handleDoubleClick);
                 app.menuOverlay.addEventListener('click', toggleMenu);
