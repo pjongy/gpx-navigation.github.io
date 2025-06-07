@@ -134,7 +134,7 @@
 
     <script>
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-final'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v4'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -151,7 +151,6 @@
                 settings: { updateInterval: 5000, language: 'ko' }, permissions: { gps: 'prompt' }, wakeLock: null,
             };
             const CONSTANTS = { EARTH_RADIUS_KM: 6371, HEADING_SMOOTHING_SAMPLES: 5, ZOOM_SCALES: [10, 100, 500, 1000, 5000, 'fit'] };
-
             const i18n = {
                 ko: {
                     currentSpeed: '현재 속도', totalDistance: '누적 거리', totalTime: '누적 시간', avgSpeed: '평균 속력',
@@ -165,12 +164,10 @@
                     gpsError: '위치 정보를 가져올 수 없습니다.',
                     noGpxFile: '먼저 GPX 파일을 로드해주세요.',
                     noJourneyData: '저장할 여정 기록이 없습니다.',
-                    resetConfirm: '모든 데이터를 초기화하시겠습니까?',
-                    resetConfirmBtn: '초기화',
-                    cancelBtn: '취소',
+                    resetConfirm: '모든 데이터를 초기화하시겠습니까?', resetConfirmBtn: '초기화', cancelBtn: '취소',
                     wakelockFail: '화면 꺼짐 방지 기능을 활성화할 수 없습니다. 브라우저 설정 또는 배터리 절약 모드를 확인해주세요.',
-                    gpsTestSuccess: 'GPS 테스트 성공',
-                    offRouteWarning: '경로를 100m 이상 이탈했습니다.',
+                    gpsTestSuccess: 'GPS 테스트 성공', offRouteWarning: '경로를 100m 이상 이탈했습니다.',
+                    resetSuccess: '초기화가 완료되었습니다.',
                 },
                 en: {
                     currentSpeed: 'Current Speed', totalDistance: 'Distance', totalTime: 'Time', avgSpeed: 'Avg. Speed',
@@ -181,60 +178,76 @@
                     gpxFileError: 'No valid track points (&lt;trkpt&gt;) found in the GPX file.',
                     fileReadError: 'An error occurred while reading the file.',
                     permissionDenied: 'GPS permission denied. Please enable it in your browser settings.',
-                    gpsError: 'Could not retrieve location information.',
-                    noGpxFile: 'Please load a GPX file first.',
-                    noJourneyData: 'There is no journey data to save.',
-                    resetConfirm: 'Are you sure you want to reset all data?',
-                    resetConfirmBtn: 'Reset',
-                    cancelBtn: 'Cancel',
+                    gpsError: 'Could not retrieve location information.', noGpxFile: 'Please load a GPX file first.',
+                    noJourneyData: 'There is no journey data to save.', resetConfirm: 'Are you sure you want to reset all data?',
+                    resetConfirmBtn: 'Reset', cancelBtn: 'Cancel',
                     wakelockFail: 'Could not enable screen wake lock. Please check browser settings or battery saver mode.',
-                    gpsTestSuccess: 'GPS Test Successful',
-                    offRouteWarning: 'You are more than 100m off the route.',
+                    gpsTestSuccess: 'GPS Test Successful', offRouteWarning: 'You are more than 100m off the route.',
+                    resetSuccess: 'Reset complete.',
                 }
             };
-
+            
             const setLanguage = (lang) => {
                 state.settings.language = lang;
                 document.documentElement.lang = lang;
                 app.langToggle.checked = lang === 'en';
                 document.querySelectorAll('[data-i18n]').forEach(el => {
                     const key = el.dataset.i18n;
-                    if (i18n[lang][key]) {
-                        el.textContent = i18n[lang][key];
-                    }
+                    if (i18n[lang][key]) el.textContent = i18n[lang][key];
                 });
                 app.trackBtn.textContent = state.tracking.isActive ? i18n[lang].stopTracking : i18n[lang].startTracking;
             };
-            
             const toRad = (deg) => deg * Math.PI / 180;
             const showModal = (titleKey, messageKey, buttons = []) => {
                 const lang = state.settings.language;
-                app.modalTitle.textContent = i18n[lang][titleKey] || titleKey; 
-                app.modalMessage.innerHTML = i18n[lang][messageKey] || messageKey; 
+                app.modalTitle.textContent = i18n[lang][titleKey] || titleKey;
+                app.modalMessage.innerHTML = i18n[lang][messageKey] || messageKey;
                 app.modalButtons.innerHTML = '';
-                if (buttons.length > 0) { buttons.forEach(b => { const btn = document.createElement('button'); btn.textContent = i18n[lang][b.textKey]; btn.className = b.class || 'modal-close-btn'; btn.onclick = () => { hideModal(); if (b.onClick) b.onClick(); }; app.modalButtons.appendChild(btn); });
-                } else { app.modalButtons.innerHTML = `<button class="modal-close-btn">${i18n[lang].close}</button>`; app.modalButtons.querySelector('button').onclick = hideModal; }
+                if (buttons.length > 0) {
+                    buttons.forEach(b => {
+                        const btn = document.createElement('button');
+                        btn.textContent = i18n[lang][b.textKey];
+                        btn.className = b.class || 'modal-close-btn';
+                        btn.onclick = () => { hideModal(); if (b.onClick) b.onClick(); };
+                        app.modalButtons.appendChild(btn);
+                    });
+                } else {
+                    app.modalButtons.innerHTML = `<button class="modal-close-btn">${i18n[lang].close}</button>`;
+                    app.modalButtons.querySelector('button').onclick = hideModal;
+                }
                 app.modal.classList.add('show');
             };
             const hideModal = () => app.modal.classList.remove('show');
+
             const handleGpxFile = (e) => {
                 const file = e.target.files[0]; if (!file) return;
-                const reader = new FileReader(); reader.onload = (e) => parseGpx(e.target.result);
+                const reader = new FileReader();
+                reader.onload = (e) => parseGpx(e.target.result);
                 reader.onerror = () => showModal('error', 'fileReadError');
-                reader.readAsText(file); toggleMenu();
+                reader.readAsText(file);
+                toggleMenu();
             };
             const parseGpx = (gpxString) => {
                 const parser = new DOMParser(); const xmlDoc = parser.parseFromString(gpxString, "application/xml");
-                const trkpts = xmlDoc.querySelectorAll('trkpt'); if (trkpts.length === 0) return showModal('error', 'gpxFileError');
-                resetData(false); state.gpx.points = Array.from(trkpts).map(pt => ({ lat: parseFloat(pt.getAttribute('lat')), lon: parseFloat(pt.getAttribute('lon')), }));
-                calculateGpxBounds(); projectAndRenderGpx(); app.trackBtn.disabled = false;
+                const trkpts = xmlDoc.querySelectorAll('trkpt');
+                if (trkpts.length === 0) return showModal('error', 'gpxFileError');
+                resetData(false);
+                state.gpx.points = Array.from(trkpts).map(pt => ({ lat: parseFloat(pt.getAttribute('lat')), lon: parseFloat(pt.getAttribute('lon')), }));
+                calculateGpxBounds();
+                projectAndRenderGpx();
+                app.trackBtn.disabled = false;
             };
+
             const calculateGpxBounds = () => {
                  if (state.gpx.points.length === 0) return;
-                 state.gpx.bounds = state.gpx.points.reduce((acc, p) => ({ minLat: Math.min(acc.minLat, p.lat), minLon: Math.min(acc.minLon, p.lon), maxLat: Math.max(acc.maxLat, p.lat), maxLon: Math.max(acc.maxLon, p.lon), }), { minLat: 90, minLon: 180, maxLat: -90, maxLon: -180 });
+                 state.gpx.bounds = state.gpx.points.reduce((acc, p) => ({
+                    minLat: Math.min(acc.minLat, p.lat), minLon: Math.min(acc.minLon, p.lon),
+                    maxLat: Math.max(acc.maxLat, p.lat), maxLon: Math.max(acc.maxLon, p.lon),
+                 }), { minLat: 90, minLon: 180, maxLat: -90, maxLon: -180 });
             };
             const projectPoint = (lat, lon) => {
-                const { minLat, minLon, maxLat, maxLon } = state.gpx.bounds; const mapSize = 10000;
+                const { minLat, minLon, maxLat, maxLon } = state.gpx.bounds;
+                const mapSize = 10000;
                 const x = (lon - minLon) / (maxLon - minLon) * mapSize;
                 const mercN = Math.log(Math.tan((Math.PI / 4) + (toRad(lat) / 2)));
                 const minMercN = Math.log(Math.tan((Math.PI / 4) + (toRad(minLat) / 2)));
@@ -248,92 +261,156 @@
                 app.gpxTrack.setAttribute('d', pathData);
                 const totalDistanceMeters = haversineDistance(state.gpx.points[0], state.gpx.points[state.gpx.points.length - 1]) * 1000;
                 const projectedStart = projectPoint(state.gpx.points[0].lat, state.gpx.points[0].lon);
-                const projectedEnd = projectPoint(state.gpx.points[state.gpx.points.length-1].lat, state.gpx.points[state.gpx.points.length-1].lon);
+                const projectedEnd = projectPoint(state.gpx.points[state.gpx.points.length - 1].lat, state.gpx.points[state.gpx.points.length - 1].lon);
                 const projectedDist = Math.sqrt((projectedEnd.x - projectedStart.x)**2 + (projectedEnd.y - projectedStart.y)**2);
-                state.gpx.metersPerUnit = totalDistanceMeters / projectedDist;
+                state.gpx.metersPerUnit = projectedDist > 0 ? totalDistanceMeters / projectedDist : 1;
                 setZoom('fit');
             };
-            const checkGpsPermission = async () => {
-                if (!navigator.permissions) return;
-                try { const result = await navigator.permissions.query({ name: 'geolocation' }); state.permissions.gps = result.state; result.onchange = () => state.permissions.gps = result.state; } catch (e) { console.warn("Permission API not supported."); }
+            const haversineDistance = (p1, p2) => {
+                const dLat = toRad(p2.lat - p1.lat), dLon = toRad(p2.lon - p1.lon);
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLon / 2) ** 2;
+                return CONSTANTS.EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             };
-            const toggleTracking = async () => { if(state.gpx.points.length === 0) return showModal('alert', 'noGpxFile'); state.tracking.isActive ? stopTracking() : await startTracking(); };
-            const startTracking = async () => {
-                await checkGpsPermission(); if (state.permissions.gps === 'denied') return showModal('error', 'permissionDenied');
-                state.tracking.isActive = true; app.trackBtn.textContent = i18n[state.settings.language].stopTracking;
-                app.trackBtn.style.backgroundColor = 'var(--accent-color)';
-                state.tracking.startTime = Date.now(); state.tracking.timerId = setInterval(updateTimer, 1000);
-                updatePosition();
-                setZoom(1);
-                try { 
-                    if ('wakeLock' in navigator) state.wakeLock = await navigator.wakeLock.request('screen'); 
-                } catch (err) { 
-                    console.error(`${err.name}, ${err.message}`);
-                    showModal('alert', 'wakelockFail');
-                }
-            };
-            const stopTracking = () => {
-                state.tracking.isActive = false; app.trackBtn.textContent = i18n[state.settings.language].startTracking;
-                app.trackBtn.style.backgroundColor = '';
-                clearTimeout(state.tracking.gpsTimeoutId); clearInterval(state.tracking.timerId); state.tracking.gpsTimeoutId = state.tracking.timerId = null;
-                app.saveBtn.disabled = !state.tracking.startTime;
-                if(state.wakeLock) state.wakeLock.release().then(() => state.wakeLock = null);
-            };
-            const scheduleNextPositionUpdate = () => { if (!state.tracking.isActive) return; clearTimeout(state.tracking.gpsTimeoutId); state.tracking.gpsTimeoutId = setTimeout(updatePosition, state.settings.updateInterval); };
-            const updatePosition = () => { if (!state.tracking.isActive) return; navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }); };
-            const onGpsSuccess = (position) => {
-                state.position.current = position; const { latitude, longitude, speed } = position.coords;
-                const closest = findClosestPointOnGpx({ lat: latitude, lon: longitude });
-                state.position.snapped = closest.point;
-
-                const offRouteDistance = haversineDistance({ lat: latitude, lon: longitude }, closest.point);
-                if (offRouteDistance > 0.1) { // 100m
-                    if (!state.tracking.isOffRoute) {
-                        state.tracking.isOffRoute = true;
-                        app.offRouteWarning.style.display = 'block';
-                    }
-                } else {
-                    if (state.tracking.isOffRoute) {
-                       state.tracking.isOffRoute = false;
-                       app.offRouteWarning.style.display = 'none';
-                    }
-                }
-
-                if (state.tracking.previousPoint) { state.tracking.totalDistance += haversineDistance(state.tracking.previousPoint, state.position.snapped); }
-                state.tracking.previousPoint = state.position.snapped;
-                const userPathD = app.userPath.getAttribute('d') || '';
-                const projected = projectPoint(state.position.snapped.lat, state.position.snapped.lon);
-                app.userPath.setAttribute('d', `${userPathD}${userPathD ? 'L' : 'M'}${projected.x},${projected.y}`);
-                updateDashboard(speed, state.tracking.totalDistance, state.tracking.elapsedTime); updateMap();
-                scheduleNextPositionUpdate();
-            };
-            const onGpsError = (error) => { showModal('error', 'gpsError'); scheduleNextPositionUpdate(); };
-            const updateDashboard = (speed, distance, time) => { app.speedValue.textContent = speed ? (speed * 3.6).toFixed(1) : '0.0'; app.distanceValue.textContent = distance.toFixed(2); app.avgSpeedValue.textContent = (time > 0) ? (distance / (time / 3600)).toFixed(1) : '0.0'; };
-            const updateTimer = () => {
-                if (!state.tracking.startTime) return; state.tracking.elapsedTime = Math.floor((Date.now() - state.tracking.startTime) / 1000);
-                const h = String(Math.floor(state.tracking.elapsedTime / 3600)).padStart(2, '0');
-                const m = String(Math.floor((state.tracking.elapsedTime % 3600) / 60)).padStart(2, '0');
-                const s = String(state.tracking.elapsedTime % 60).padStart(2, '0');
-                app.timeValue.textContent = `${h}:${m}:${s}`;
-            };
-            const haversineDistance = (p1, p2) => { const dLat = toRad(p2.lat - p1.lat), dLon = toRad(p2.lon - p1.lon); const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLon / 2) ** 2; return CONSTANTS.EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); };
             const findClosestPointOnGpx = (p) => {
                 let closestPoint = null, minDistance = Infinity;
                 for (let i = 0; i < state.gpx.points.length - 1; i++) {
                     const { point, distance } = findClosestPointOnSegment(p, state.gpx.points[i], state.gpx.points[i+1]);
                     if (distance < minDistance) { minDistance = distance; closestPoint = point; }
-                } return { point: closestPoint || state.gpx.points[0], distance: minDistance };
+                }
+                return { point: closestPoint || state.gpx.points[0], distance: minDistance };
             };
-            const findClosestPointOnSegment = (p, a, b) => { const ap = { x: p.lon - a.lon, y: p.lat - a.lat }, ab = { x: b.lon - a.lon, y: b.lat - a.lat }; let t = (ap.x * ab.x + ap.y * ab.y) / (ab.x ** 2 + ab.y ** 2); t = Math.max(0, Math.min(1, t)); const closest = { lat: a.lat + ab.y * t, lon: a.lon + ab.x * t }; return { point: closest, distance: haversineDistance(p, closest) }; };
+            const findClosestPointOnSegment = (p, a, b) => {
+                const ap = { x: p.lon - a.lon, y: p.lat - a.lat }, ab = { x: b.lon - a.lon, y: b.lat - a.lat };
+                let t = (ap.x * ab.x + ap.y * ab.y) / (ab.x ** 2 + ab.y ** 2);
+                t = Math.max(0, Math.min(1, t));
+                const closest = { lat: a.lat + ab.y * t, lon: a.lon + ab.x * t };
+                return { point: closest, distance: haversineDistance(p, closest) };
+            };
+            
+            const checkGpsPermission = async () => {
+                if (!navigator.permissions) return;
+                try {
+                    const result = await navigator.permissions.query({ name: 'geolocation' });
+                    state.permissions.gps = result.state;
+                    result.onchange = () => state.permissions.gps = result.state;
+                } catch (e) { console.warn("Permission API not supported."); }
+            };
+            const toggleTracking = async () => {
+                if(state.gpx.points.length === 0) return showModal('alert', 'noGpxFile');
+                state.tracking.isActive ? stopTracking() : await startTracking();
+            };
+            const startTracking = async () => {
+                await checkGpsPermission();
+                if (state.permissions.gps === 'denied') return showModal('error', 'permissionDenied');
+                state.tracking.isActive = true;
+                app.trackBtn.textContent = i18n[state.settings.language].stopTracking;
+                app.trackBtn.style.backgroundColor = 'var(--accent-color)';
+                state.tracking.startTime = Date.now();
+                state.tracking.timerId = setInterval(updateTimer, 1000);
+                updatePosition();
+                setZoom(1);
+                try {
+                    if ('wakeLock' in navigator) state.wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                    showModal('alert', 'wakelockFail');
+                }
+            };
+            const stopTracking = () => {
+                state.tracking.isActive = false;
+                app.trackBtn.textContent = i18n[state.settings.language].startTracking;
+                app.trackBtn.style.backgroundColor = '';
+                clearTimeout(state.tracking.gpsTimeoutId);
+                clearInterval(state.tracking.timerId);
+                state.tracking.gpsTimeoutId = state.tracking.timerId = null;
+                app.saveBtn.disabled = !state.tracking.startTime;
+                if(state.wakeLock) state.wakeLock.release().then(() => state.wakeLock = null);
+            };
+            const scheduleNextPositionUpdate = () => {
+                if (!state.tracking.isActive) return;
+                clearTimeout(state.tracking.gpsTimeoutId);
+                state.tracking.gpsTimeoutId = setTimeout(updatePosition, state.settings.updateInterval);
+            };
+            const updatePosition = () => {
+                if (!state.tracking.isActive) return;
+                navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+            };
+            const onGpsSuccess = (position) => {
+                state.position.current = position;
+                const { latitude, longitude, speed } = position.coords;
+                const closest = findClosestPointOnGpx({ lat: latitude, lon: longitude });
+                state.position.snapped = closest.point;
+
+                const offRouteDistance = haversineDistance({ lat: latitude, lon: longitude }, closest.point);
+                state.tracking.isOffRoute = offRouteDistance > 0.1; // 100m
+                app.offRouteWarning.style.display = state.tracking.isOffRoute ? 'block' : 'none';
+
+                if (state.tracking.previousPoint) {
+                    state.tracking.totalDistance += haversineDistance(state.tracking.previousPoint, state.position.snapped);
+                }
+                state.tracking.previousPoint = state.position.snapped;
+                const userPathD = app.userPath.getAttribute('d') || '';
+                const projected = projectPoint(state.position.snapped.lat, state.position.snapped.lon);
+                app.userPath.setAttribute('d', `${userPathD}${userPathD ? 'L' : 'M'}${projected.x},${projected.y}`);
+
+                updateDashboard(speed, state.tracking.totalDistance, state.tracking.elapsedTime);
+                updateMap();
+                scheduleNextPositionUpdate();
+            };
+            const onGpsError = (error) => {
+                showModal('error', 'gpsError');
+                scheduleNextPositionUpdate();
+            };
+
+            const handleDeviceOrientation = (e) => {
+                if (state.map.mode !== 'head-up') return;
+
+                let rawHeading = e.webkitCompassHeading || e.alpha;
+                if (typeof rawHeading !== 'number' || isNaN(rawHeading)) return;
+
+                state.position.headingHistory.push(rawHeading);
+                if (state.position.headingHistory.length > CONSTANTS.HEADING_SMOOTHING_SAMPLES) {
+                    state.position.headingHistory.shift();
+                }
+
+                const sinSum = state.position.headingHistory.reduce((sum, h) => sum + Math.sin(toRad(h)), 0);
+                const cosSum = state.position.headingHistory.reduce((sum, h) => sum + Math.cos(toRad(h)), 0);
+                const avgRad = Math.atan2(sinSum, cosSum);
+                let avgDeg = avgRad * 180 / Math.PI;
+                if (avgDeg < 0) avgDeg += 360;
+                state.position.heading = avgDeg;
+                
+                if (state.position.snapped || state.position.current) {
+                    updateMap();
+                }
+            };
+
+            const updateDashboard = (speed, distance, time) => {
+                app.speedValue.textContent = speed ? (speed * 3.6).toFixed(1) : '0.0';
+                app.distanceValue.textContent = distance.toFixed(2);
+                app.avgSpeedValue.textContent = (time > 0) ? (distance / (time / 3600)).toFixed(1) : '0.0';
+            };
+            const updateTimer = () => {
+                if (!state.tracking.startTime) return;
+                state.tracking.elapsedTime = Math.floor((Date.now() - state.tracking.startTime) / 1000);
+                const h = String(Math.floor(state.tracking.elapsedTime / 3600)).padStart(2, '0');
+                const m = String(Math.floor((state.tracking.elapsedTime % 3600) / 60)).padStart(2, '0');
+                const s = String(state.tracking.elapsedTime % 60).padStart(2, '0');
+                app.timeValue.textContent = `${h}:${m}:${s}`;
+            };
+            
             const updateMap = () => {
-                const positionToProject = state.tracking.isOffRoute ? { lat: state.position.current.coords.latitude, lon: state.position.current.coords.longitude } : state.position.snapped;
+                const positionToProject = state.tracking.isOffRoute 
+                    ? (state.position.current ? { lat: state.position.current.coords.latitude, lon: state.position.current.coords.longitude } : null) 
+                    : state.position.snapped;
+                
                 if (!positionToProject) return;
 
                 const projected = projectPoint(positionToProject.lat, positionToProject.lon);
                 
-                if (app.marker.style.visibility === 'hidden') {
-                     app.marker.style.visibility = 'visible';
-                     setZoom(1);
+                if (app.marker.getAttribute('visibility') === 'hidden') {
+                    app.marker.setAttribute('visibility', 'visible');
+                    if (state.gpx.points.length > 0) setZoom(1);
                 }
 
                 let markerScreenX = projected.x;
@@ -343,18 +420,20 @@
                 if (state.map.isCentered) {
                     const vb = state.map.viewBox;
                     markerScreenX = vb.x + vb.width * 0.5;
-                    markerScreenY = vb.y + vb.height * 0.8;
+                    markerScreenY = vb.y + vb.height * 0.8; 
                     mapGroupTransform = `translate(${markerScreenX - projected.x}, ${markerScreenY - projected.y})`;
                 }
                 
-                let markerRotation = 0;
+                const markerRotation = 0; 
+
                 if (state.map.mode === 'head-up') {
-                    markerRotation = state.tracking.isActive ? 0 : state.position.heading;
-                    if(state.tracking.isActive) mapGroupTransform += ` rotate(${-state.position.heading}, ${projected.x}, ${projected.y})`;
+                    mapGroupTransform += ` rotate(${-state.position.heading}, ${projected.x}, ${projected.y})`;
                 }
+                
                 app.marker.setAttribute('transform', `translate(${markerScreenX}, ${markerScreenY}) rotate(${markerRotation})`);
                 app.mapGroup.setAttribute('transform', mapGroupTransform);
             };
+
             const setZoom = (levelOrMode) => {
                 if (state.gpx.points.length === 0) return;
                 let newLevel = state.map.zoomLevel;
@@ -370,30 +449,29 @@
                 
                 if(scaleTarget === 'fit'){
                     const pathBounds = app.gpxTrack.getBBox();
-                    vb.x = pathBounds.x - pathBounds.width * 0.05; vb.y = pathBounds.y - pathBounds.height * 0.05;
-                    vb.width = pathBounds.width * 1.1; vb.height = pathBounds.height * 1.1;
+                    if(pathBounds.width > 0 && pathBounds.height > 0) {
+                        vb.x = pathBounds.x - pathBounds.width * 0.05; vb.y = pathBounds.y - pathBounds.height * 0.05;
+                        vb.width = pathBounds.width * 1.1; vb.height = pathBounds.height * 1.1;
+                    }
                 } else {
-                    const centerPoint = state.tracking.isOffRoute ? state.position.current.coords : state.position.snapped;
-                    const center = centerPoint ? projectPoint(centerPoint.lat, centerPoint.lon) : { x: vb.x + vb.width / 2, y: vb.y + vb.height / 2};
+                    const centerPoint = state.tracking.isOffRoute ? (state.position.current ? state.position.current.coords : state.gpx.points[0]) : (state.position.snapped || state.gpx.points[0]);
+                    const center = projectPoint(centerPoint.lat, centerPoint.lon);
                     const newWidthProjected = scaleTarget / state.gpx.metersPerUnit;
                     vb.width = newWidthProjected; vb.height = newWidthProjected * ratio;
                     vb.x = center.x - vb.width / 2; vb.y = center.y - vb.height / 2;
                 }
-                app.mapSvg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`); updateMap();
+                app.mapSvg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+                updateMap();
             };
-            const handleDeviceOrientation = (e) => {
-                if (state.map.mode !== 'head-up') return;
-                let rawHeading = e.webkitCompassHeading || (360 - e.alpha);
-                if (typeof rawHeading !== 'number') return;
-                state.position.headingHistory.push(rawHeading);
-                if (state.position.headingHistory.length > CONSTANTS.HEADING_SMOOTHING_SAMPLES) { state.position.headingHistory.shift(); }
-                state.position.heading = state.position.headingHistory.reduce((sum, h) => sum + h, 0) / state.position.headingHistory.length;
-                if (state.tracking.isActive) updateMap();
-            };
+
             const toggleMenu = () => { app.menuPanel.classList.toggle('open'); app.menuOverlay.classList.toggle('open'); };
             const handleAction = (e) => {
-                const target = e.target.closest('[data-action]'); if (!target) return; const action = target.dataset.action;
-                if (['center-map', 'toggle-map-mode'].includes(action) || action.startsWith('zoom')) { if (state.gpx.points.length === 0) return showModal('alert', 'noGpxFile'); }
+                const target = e.target.closest('[data-action]');
+                if (!target) return;
+                const action = target.dataset.action;
+                if (['center-map', 'toggle-map-mode'].includes(action) || action.startsWith('zoom')) {
+                    if (state.gpx.points.length === 0) return showModal('alert', 'noGpxFile');
+                }
                 switch (action) {
                     case 'toggle-menu': toggleMenu(); break;
                     case 'toggle-tracking': toggleTracking(); break;
@@ -403,50 +481,90 @@
                     case 'toggle-map-mode':
                         state.map.mode = state.map.mode === 'north-up' ? 'head-up' : 'north-up';
                         app.mapModeBtn.classList.toggle('active', state.map.mode === 'head-up');
-                        if (state.map.mode === 'head-up' && !state.map.isCentered) { state.map.isCentered = true; app.centerMapBtn.classList.add('active'); }
-                        if(state.position.snapped) updateMap();
+                        if (state.map.mode === 'head-up' && !state.map.isCentered) {
+                            state.map.isCentered = true; app.centerMapBtn.classList.add('active');
+                        }
+                        if(state.position.snapped || state.position.current) updateMap();
                         break;
-                    case 'zoom-in': setZoom('in'); break; case 'zoom-out': setZoom('out'); break; case 'zoom-reset': setZoom(1); break;
-                    case 'zoom-fit': if (state.map.mode === 'head-up') { state.map.mode = 'north-up'; app.mapModeBtn.classList.remove('active'); } setZoom('fit'); break;
-                    case 'toggle-fullscreen': document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); break;
+                    case 'zoom-in': setZoom('in'); break;
+                    case 'zoom-out': setZoom('out'); break;
+                    case 'zoom-reset': setZoom(1); break;
+                    case 'zoom-fit':
+                        if (state.map.mode === 'head-up') {
+                            state.map.mode = 'north-up';
+                            app.mapModeBtn.classList.remove('active');
+                        }
+                        setZoom('fit');
+                        break;
+                    case 'toggle-fullscreen': document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(err => console.error(err)); break;
                     case 'save-journey': exportJourneyData(); break;
                 }
             };
             const handleMapPan = (e) => {
-                e.preventDefault(); const p = state.map.panning;
-                const currentX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX; const currentY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+                e.preventDefault();
+                const p = state.map.panning;
+                const currentX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+                const currentY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
                 if (p.isDown) {
-                    state.map.isCentered = false; app.centerMapBtn.classList.remove('active'); app.mapGroup.setAttribute('transform', '');
+                    state.map.isCentered = false; app.centerMapBtn.classList.remove('active');
+                    app.mapGroup.setAttribute('transform', '');
                     const scale = app.mapSvg.clientWidth / state.map.viewBox.width;
-                    const dx = (currentX - p.startX) / scale; const dy = (currentY - p.startY) / scale;
-                    app.mapSvg.setAttribute('viewBox', `${p.vbX - dx} ${p.vbY - dy} ${state.map.viewBox.width} ${state.map.viewBox.height}`);
+                    const dx = (currentX - p.startX) / scale;
+                    const dy = (currentY - p.startY) / scale;
+                    state.map.viewBox.x = p.vbX - dx; state.map.viewBox.y = p.vbY - dy;
+                    app.mapSvg.setAttribute('viewBox', `${state.map.viewBox.x} ${state.map.viewBox.y} ${state.map.viewBox.width} ${state.map.viewBox.height}`);
                 }
             };
             const handleDoubleClick = (e) => {
                 if(e.target.closest('#info-panel')) $('[data-action="toggle-fullscreen"]').click();
-                if(e.target.closest('#map-container')) { $('[data-action="center-map"]').click(); $('[data-action="zoom-reset"]').click(); }
+                if(e.target.closest('#map-container')) {
+                     $('[data-action="center-map"]').click();
+                     $('[data-action="zoom-reset"]').click();
+                }
             };
             const resetData = (fullReset) => {
                 if (state.tracking.isActive) stopTracking();
-                Object.assign(state, { gpx: { points: [], bounds: null, metersPerUnit:1 }, tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false }, position: { current: null, heading: 0, snapped: null, headingHistory: [] }, });
-                app.gpxTrack.setAttribute('d', ''); app.userPath.setAttribute('d', ''); app.marker.style.visibility = 'hidden';
+                Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false });
+                Object.assign(state.position, { current: null, heading: 0, snapped: null, headingHistory: [] });
+                app.userPath.setAttribute('d', '');
+                app.marker.setAttribute('visibility', 'hidden');
                 app.offRouteWarning.style.display = 'none';
-                updateDashboard(0, 0, 0); app.timeValue.textContent = '00:00:00'; app.trackBtn.disabled = true; app.saveBtn.disabled = true;
-                if (fullReset) { app.updateIntervalSelect.value = '5000'; state.settings.updateInterval = 5000; showModal('alert', '초기화가 완료되었습니다.'); }
+                updateDashboard(0, 0, 0);
+                app.timeValue.textContent = '00:00:00';
+                app.saveBtn.disabled = true;
+                if (fullReset) {
+                    Object.assign(state.gpx, { points: [], bounds: null, metersPerUnit:1 });
+                    app.gpxTrack.setAttribute('d', '');
+                    app.trackBtn.disabled = true;
+                    app.updateIntervalSelect.value = '5000';
+                    state.settings.updateInterval = 5000;
+                    showModal('alert', 'resetSuccess');
+                }
             };
             const exportJourneyData = () => {
                 if (!state.tracking.startTime) return showModal('error', 'noJourneyData');
-                const journeyData = { startTime: new Date(state.tracking.startTime).toISOString(), endTime: new Date().toISOString(), totalDistanceKm: state.tracking.totalDistance, elapsedTimeSec: state.tracking.elapsedTime, avgSpeedKmh: (state.tracking.elapsedTime > 0) ? (state.tracking.totalDistance / (state.tracking.elapsedTime / 3600)) : 0, };
+                const journeyData = {
+                    startTime: new Date(state.tracking.startTime).toISOString(), endTime: new Date().toISOString(),
+                    totalDistanceKm: state.tracking.totalDistance, elapsedTimeSec: state.tracking.elapsedTime,
+                    avgSpeedKmh: (state.tracking.elapsedTime > 0) ? (state.tracking.totalDistance / (state.tracking.elapsedTime / 3600)) : 0,
+                };
                 const blob = new Blob([JSON.stringify(journeyData, null, 2)], { type: 'application/json' });
-                const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-                a.download = `journey_summary_${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `journey_summary_${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
             };
+
             const init = () => {
                 const userLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
                 setLanguage(userLang);
 
-                checkGpsPermission(); document.body.addEventListener('click', handleAction); document.body.addEventListener('dblclick', handleDoubleClick);
-                app.menuOverlay.addEventListener('click', toggleMenu); app.gpxFileInput.addEventListener('change', handleGpxFile);
+                checkGpsPermission();
+                document.body.addEventListener('click', handleAction);
+                document.body.addEventListener('dblclick', handleDoubleClick);
+                app.menuOverlay.addEventListener('click', toggleMenu);
+                app.gpxFileInput.addEventListener('change', handleGpxFile);
                 app.updateIntervalSelect.onchange = (e) => {
                     state.settings.updateInterval = parseInt(e.target.value, 10);
                     if (state.tracking.isActive) {
@@ -454,13 +572,23 @@
                         updatePosition();
                     }
                 };
-                if (window.DeviceOrientationEvent) window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+                
+                const orientationEvent = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
+                if (window.DeviceOrientationEvent) window.addEventListener(orientationEvent, handleDeviceOrientation, true);
+                
                 app.modal.onclick = (e) => { if (e.target.classList.contains('modal-close-btn') || e.target === app.modal) hideModal(); };
-                app.mapSvg.addEventListener('pointerdown', (e) => { state.map.panning.isDown = true; state.map.panning.startX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX; state.map.panning.startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY; state.map.panning.vbX = state.map.viewBox.x; state.map.panning.vbY = state.map.viewBox.y; });
-                app.mapSvg.addEventListener('pointermove', handleMapPan); window.addEventListener('pointerup', () => state.map.panning.isDown = false);
+                app.mapSvg.addEventListener('pointerdown', (e) => {
+                    if (e.button !== 0) return;
+                    state.map.panning.isDown = true;
+                    state.map.panning.startX = e.clientX; state.map.panning.startY = e.clientY;
+                    state.map.panning.vbX = state.map.viewBox.x; state.map.panning.vbY = state.map.viewBox.y;
+                });
+                app.mapSvg.addEventListener('pointermove', handleMapPan);
+                window.addEventListener('pointerup', () => state.map.panning.isDown = false);
                 app.langToggle.addEventListener('change', (e) => setLanguage(e.target.checked ? 'en' : 'ko'));
                 app.trackBtn.disabled = true;
             };
+            
             init();
         });
     </script>
