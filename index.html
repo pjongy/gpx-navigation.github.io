@@ -144,7 +144,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v11'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v12'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -386,9 +386,8 @@
                 let rawHeading = e.webkitCompassHeading || e.alpha;
                 if (typeof rawHeading !== 'number' || isNaN(rawHeading)) return;
 
-                let correctedHeading = (rawHeading + state.screen.orientation) % 360;
-                if (correctedHeading < 0) correctedHeading += 360;
-
+                let correctedHeading = (rawHeading - state.screen.orientation);
+                
                 state.position.headingHistory.push(correctedHeading);
                 if (state.position.headingHistory.length > CONSTANTS.HEADING_SMOOTHING_SAMPLES) {
                     state.position.headingHistory.shift();
