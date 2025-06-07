@@ -60,7 +60,7 @@
         #gpx-track, #user-path { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
         #gpx-track { stroke: var(--gpx-track-color); stroke-width: 3px; }
         #user-path { stroke: var(--user-path-color); stroke-width: 5px; }
-        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; vector-effect: non-scaling-stroke; transform-origin: center; transition: transform 0.2s linear; pointer-events: none; }
+        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; /* vector-effect is removed to allow scaling */ transform-origin: center; transition: transform 0.2s linear; pointer-events: none; }
         .map-controls-wrapper { position: absolute; bottom: 15px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
         #left-controls { left: 15px; } #right-controls { right: 15px; }
         #top-right-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 10; }
@@ -123,7 +123,7 @@
                 <polygon id="current-pos-marker" points="0,-12 9,12 -9,12" visibility="hidden"></polygon>
             </svg>
             <div id="top-right-controls"><button class="control-btn" data-action="toggle-fullscreen" title="전체화면"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" fill="currentColor"></path></svg></button></div>
-            <div id="left-controls" class="map-controls-wrapper"><button class="control-btn" data-action="zoom-in" title="확대">+</button><button class="control-btn" data-action="zoom-out" title="축소">-</button><button class="control-btn" data-action="zoom-reset" title="100m 스케일">0</button><button class="control-btn" data-action="zoom-fit" title="전체 경로 보기"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42L17.3 18.7 15 21h6z"></path></svg></button></div>
+            <div id="left-controls" class="map-controls-wrapper"><button class="control-btn" data-action="zoom-in" title="확대">+</button><button class="control-btn" data-action="zoom-out" title="축소">-</button><button class="control-btn" data-action="zoom-reset" title="200m 스케일">0</button><button class="control-btn" data-action="zoom-fit" title="전체 경로 보기"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42L17.3 18.7 15 21h6z"></path></svg></button></div>
             <div id="right-controls" class="map-controls-wrapper"><button class="control-btn" data-action="toggle-map-mode" title="지도 모드 전환"><svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 2.99l.71-.71z"></path></svg></button><button class="control-btn active" data-action="center-map" title="현재 위치로 중앙 정렬"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4s-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"></path></svg></button></div>
             <button class="control-btn" id="menu-btn" data-action="toggle-menu"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"></path></svg></button>
         </div>
@@ -134,6 +134,7 @@
         <div class="menu-section"><h3 data-i18n="journeyLog">여정 기록</h3><button class="menu-btn" data-action="toggle-tracking" data-i18n="startTracking">추적 시작</button><button class="menu-btn" data-action="save-journey" data-i18n="saveJourneySummary" disabled>여정 요약 저장</button></div>
         <div class="menu-section"><h3 data-i18n="settings">설정</h3>
             <div class="setting-item"><label for="update-interval" data-i18n="updateInterval">GPS 갱신 주기 (초)</label><select id="update-interval"><option value="1000">1</option><option value="5000">5</option><option value="15000" selected>15</option><option value="30000">30</option><option value="60000">60</option><option value="300000">300</option></select></div>
+            <div class="setting-item"><label for="compass-interval" data-i18n="compassInterval">나침반 갱신 주기 (초)</label><select id="compass-interval"><option value="0" data-i18n="realtime">실시간</option><option value="100">0.1</option><option value="500">0.5</option><option value="1000">1</option><option value="5000">5</option></select></div>
             <div class="setting-item"><label for="invert-compass" data-i18n="invertCompass">나침반 방향 반전</label><label class="toggle-switch"><input type="checkbox" id="invert-compass"><span class="slider"></span></label></div>
             <div class="setting-item"><label data-i18n="language">언어</label><label class="toggle-switch"><input type="checkbox" id="lang-toggle"><span class="slider"></span></label></div>
         </div>
@@ -144,7 +145,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v12'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v14'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -152,25 +153,32 @@
             const $ = (selector) => document.querySelector(selector);
             
             const app = {
-                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), invertCompassToggle: $('#invert-compass'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
+                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), compassIntervalSelect: $('#compass-interval'), invertCompassToggle: $('#invert-compass'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
             };
 
             const state = {
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
-                position: { current: null, heading: 0, snapped: null, headingHistory: [] },
-                map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 },
+                position: { current: null, heading: 0, snapped: null, headingHistory: [], lastCompassUpdate: 0 },
+                map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 },
                 screen: { orientation: 0 },
-                settings: { updateInterval: 15000, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
+                settings: { updateInterval: 15000, compassInterval: 0, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
             };
 
-            const CONSTANTS = { EARTH_RADIUS_KM: 6371, HEADING_SMOOTHING_SAMPLES: 5, ZOOM_SCALES: [10, 100, 500, 1000, 5000, 'fit'] };
+            const CONSTANTS = { 
+                EARTH_RADIUS_KM: 6371, 
+                HEADING_SMOOTHING_SAMPLES: 5, 
+                ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, 'fit'],
+                MARKER_BASE_SIZE_PX: 44, // Target marker size in pixels
+                MARKER_BASE_SCALE_M: 200 // The map scale at which the marker has its base size
+            };
             
             const i18n = {
                 ko: {
                     currentSpeed: '현재 속도', totalDistance: '누적 거리', totalTime: '누적 시간', avgSpeed: '평균 속력',
                     fileManagement: '파일 관리', openGpxFile: 'GPX 파일 열기', journeyLog: '여정 기록', startTracking: '추적 시작',
                     stopTracking: '추적 중지', saveJourneySummary: '여정 요약 저장', settings: '설정', updateInterval: 'GPS 갱신 주기 (초)',
+                    compassInterval: '나침반 갱신 주기 (초)', realtime: '실시간',
                     language: '언어', invertCompass: '나침반 방향 반전', diagnostics: '진단 및 초기화', gpsTest: 'GPS 테스트', resetAll: '모든 데이터 초기화', close: '닫기',
                     error: '오류', alert: '알림', warning: '경고',
                     gpxFileError: 'GPX 파일에 유효한 트랙(&lt;trkpt&gt;) 데이터가 없습니다.',
@@ -187,7 +195,8 @@
                 en: {
                     currentSpeed: 'Current Speed', totalDistance: 'Distance', totalTime: 'Time', avgSpeed: 'Avg. Speed',
                     fileManagement: 'File Management', openGpxFile: 'Open GPX File', journeyLog: 'Journey Log', startTracking: 'Start Tracking',
-                    stopTracking: 'Stop Tracking', saveJourneySummary: 'Save Journey Summary', settings: 'Settings', updateInterval: 'GPS Update Interval (s)',
+                    stopTracking: 'Stop Tracking', saveJourneySummary: 'Save Journey Summary', settings: 'Settings', updateInterval: 'GPS Update Interval (sec)',
+                    compassInterval: 'Compass Update Rate (sec)', realtime: 'Real-time',
                     language: 'Language', invertCompass: 'Invert Compass Direction', diagnostics: 'Diagnostics', gpsTest: 'GPS Test', resetAll: 'Reset All Data', close: 'Close',
                     error: 'Error', alert: 'Alert', warning: 'Warning',
                     gpxFileError: 'No valid track points (&lt;trkpt&gt;) found in the GPX file.',
@@ -323,7 +332,7 @@
                 state.tracking.startTime = Date.now();
                 state.tracking.timerId = setInterval(updateTimer, 1000);
                 updatePosition();
-                setZoom(1);
+                setZoom(2); // Set default zoom to 200m
                 try {
                     if ('wakeLock' in navigator) state.wakeLock = await navigator.wakeLock.request('screen');
                 } catch (err) {
@@ -383,6 +392,13 @@
 
             const handleDeviceOrientation = (e) => {
                 if (state.map.mode !== 'head-up') return;
+
+                const now = Date.now();
+                if (state.settings.compassInterval > 0 && now - state.position.lastCompassUpdate < state.settings.compassInterval) {
+                    return;
+                }
+                state.position.lastCompassUpdate = now;
+
                 let rawHeading = e.webkitCompassHeading || e.alpha;
                 if (typeof rawHeading !== 'number' || isNaN(rawHeading)) return;
 
@@ -427,7 +443,7 @@
                 
                 if (app.marker.getAttribute('visibility') === 'hidden') {
                     app.marker.setAttribute('visibility', 'visible');
-                    if (state.gpx.points.length > 0) setZoom(1);
+                    if (state.gpx.points.length > 0) setZoom(2); // Default to 200m
                 }
 
                 const vb = state.map.viewBox;
@@ -459,21 +475,27 @@
                     }
                 }
 
-                app.marker.setAttribute('transform', `translate(${finalMarkerX}, ${finalMarkerY}) rotate(0)`);
+                const markerScale = (vb.width / state.gpx.metersPerUnit) / (CONSTANTS.MARKER_BASE_SCALE_M / state.gpx.metersPerUnit);
+                
+                app.marker.setAttribute('transform', `translate(${finalMarkerX}, ${finalMarkerY}) rotate(0) scale(${markerScale})`);
                 app.mapGroup.setAttribute('transform', mapGroupTransform);
             };
 
             const setZoom = (levelOrMode) => {
                 if (state.gpx.points.length === 0) return;
-                let newLevel = state.map.zoomLevel;
+                let newLevel;
                 if(levelOrMode === 'in') newLevel = Math.max(0, state.map.zoomLevel - 1);
                 else if(levelOrMode === 'out') newLevel = Math.min(CONSTANTS.ZOOM_SCALES.length - 1, state.map.zoomLevel + 1);
                 else if(levelOrMode === 'fit') newLevel = CONSTANTS.ZOOM_SCALES.length - 1;
                 else if(typeof levelOrMode === 'number') newLevel = levelOrMode;
+                else newLevel = state.map.zoomLevel;
+
                 state.map.zoomLevel = newLevel;
+
                 const vb = state.map.viewBox;
                 const scaleTarget = CONSTANTS.ZOOM_SCALES[newLevel];
                 const ratio = app.mapSvg.clientHeight / app.mapSvg.clientWidth || 1;
+                
                 if(scaleTarget === 'fit'){
                     const pathBounds = app.gpxTrack.getBBox();
                     if(pathBounds.width > 0 && pathBounds.height > 0) {
@@ -515,7 +537,7 @@
                         break;
                     case 'zoom-in': setZoom('in'); break;
                     case 'zoom-out': setZoom('out'); break;
-                    case 'zoom-reset': setZoom(1); break;
+                    case 'zoom-reset': setZoom(2); break; // Reset to 200m scale
                     case 'zoom-fit':
                         if (state.map.mode === 'head-up') {
                             state.map.mode = 'north-up';
@@ -557,8 +579,8 @@
                 if (state.tracking.isActive) stopTracking();
 
                 Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false });
-                Object.assign(state.position, { current: null, heading: 0, snapped: null, headingHistory: [] });
-                Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 });
+                Object.assign(state.position, { current: null, heading: 0, snapped: null, headingHistory: [], lastCompassUpdate: 0 });
+                Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 });
 
                 app.userPath.setAttribute('d', '');
                 app.marker.setAttribute('visibility', 'hidden');
@@ -583,9 +605,11 @@
                     const defaultLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
                     state.settings.language = defaultLang;
                     state.settings.updateInterval = 15000;
+                    state.settings.compassInterval = 0;
                     state.settings.invertCompass = false;
                     
                     app.updateIntervalSelect.value = '15000';
+                    app.compassIntervalSelect.value = '0';
                     app.invertCompassToggle.checked = false;
                     setLanguage(defaultLang); 
 
@@ -627,6 +651,9 @@
                         clearTimeout(state.tracking.gpsTimeoutId);
                         updatePosition();
                     }
+                };
+                app.compassIntervalSelect.onchange = (e) => {
+                    state.settings.compassInterval = parseInt(e.target.value, 10);
                 };
                 app.invertCompassToggle.addEventListener('change', (e) => {
                     state.settings.invertCompass = e.target.checked;
