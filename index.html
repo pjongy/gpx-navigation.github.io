@@ -128,7 +128,11 @@
     <div id="menu-panel">
         <div class="menu-section"><h3 data-i18n="fileManagement">파일 관리</h3><label for="gpx-file-input" id="gpx-file-input-label" data-i18n="openGpxFile">GPX 파일 열기</label><input type="file" id="gpx-file-input" accept=".gpx"></div>
         <div class="menu-section"><h3 data-i18n="journeyLog">여정 기록</h3><button class="menu-btn" data-action="toggle-tracking" data-i18n="startTracking">추적 시작</button><button class="menu-btn" data-action="save-journey" data-i18n="saveJourneySummary" disabled>여정 요약 저장</button></div>
-        <div class="menu-section"><h3 data-i18n="settings">설정</h3><div class="setting-item"><label for="update-interval" data-i18n="updateInterval">GPS 갱신 주기 (초)</label><select id="update-interval"><option value="1000">1</option><option value="5000" selected>5</option><option value="15000">15</option><option value="30000">30</option><option value="60000">60</option><option value="300000">300</option></select></div><div class="setting-item"><label data-i18n="language">언어</label><label class="lang-switch"><input type="checkbox" id="lang-toggle"><span class="slider"></span></label></div></div>
+        <div class="menu-section"><h3 data-i18n="settings">설정</h3>
+            <div class="setting-item"><label for="update-interval" data-i18n="updateInterval">GPS 갱신 주기 (초)</label><select id="update-interval"><option value="1000">1</option><option value="5000" selected>5</option><option value="15000">15</option><option value="30000">30</option><option value="60000">60</option><option value="300000">300</option></select></div>
+            <div class="setting-item"><label for="invert-compass" data-i18n="invertCompass">나침반 방향 반전</label><label class="lang-switch"><input type="checkbox" id="invert-compass"><span class="slider"></span></label></div>
+            <div class="setting-item"><label data-i18n="language">언어</label><label class="lang-switch"><input type="checkbox" id="lang-toggle"><span class="slider"></span></label></div>
+        </div>
         <div class="menu-section"><h3 data-i18n="diagnostics">진단 및 초기화</h3><button class="menu-btn" data-action="gps-test" data-i18n="gpsTest">GPS 테스트</button><button class="menu-btn" data-action="reset-all" data-i18n="resetAll" style="background-color: #5d2a2a;">모든 데이터 초기화</button></div>
     </div>
     <div id="modal"><div class="modal-content"><h2 id="modal-title"></h2><p id="modal-message"></p><div id="modal-buttons"><button id="modal-close-btn" data-i18n="close">닫기</button></div></div></div>
@@ -136,7 +140,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v8'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v9'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -144,7 +148,7 @@
             const $ = (selector) => document.querySelector(selector);
             
             const app = {
-                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
+                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), invertCompassToggle: $('#invert-compass'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
             };
 
             const state = {
@@ -152,7 +156,7 @@
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
                 position: { current: null, heading: 0, snapped: null, headingHistory: [] },
                 map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 },
-                settings: { updateInterval: 5000, language: 'ko' }, permissions: { gps: 'prompt' }, wakeLock: null,
+                settings: { updateInterval: 5000, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
             };
 
             const CONSTANTS = { EARTH_RADIUS_KM: 6371, HEADING_SMOOTHING_SAMPLES: 5, ZOOM_SCALES: [10, 100, 500, 1000, 5000, 'fit'] };
@@ -162,7 +166,7 @@
                     currentSpeed: '현재 속도', totalDistance: '누적 거리', totalTime: '누적 시간', avgSpeed: '평균 속력',
                     fileManagement: '파일 관리', openGpxFile: 'GPX 파일 열기', journeyLog: '여정 기록', startTracking: '추적 시작',
                     stopTracking: '추적 중지', saveJourneySummary: '여정 요약 저장', settings: '설정', updateInterval: 'GPS 갱신 주기 (초)',
-                    language: '언어', diagnostics: '진단 및 초기화', gpsTest: 'GPS 테스트', resetAll: '모든 데이터 초기화', close: '닫기',
+                    language: '언어', invertCompass: '나침반 방향 반전', diagnostics: '진단 및 초기화', gpsTest: 'GPS 테스트', resetAll: '모든 데이터 초기화', close: '닫기',
                     error: '오류', alert: '알림', warning: '경고',
                     gpxFileError: 'GPX 파일에 유효한 트랙(&lt;trkpt&gt;) 데이터가 없습니다.',
                     fileReadError: '파일을 읽는 도중 오류가 발생했습니다.',
@@ -179,7 +183,7 @@
                     currentSpeed: 'Current Speed', totalDistance: 'Distance', totalTime: 'Time', avgSpeed: 'Avg. Speed',
                     fileManagement: 'File Management', openGpxFile: 'Open GPX File', journeyLog: 'Journey Log', startTracking: 'Start Tracking',
                     stopTracking: 'Stop Tracking', saveJourneySummary: 'Save Journey Summary', settings: 'Settings', updateInterval: 'GPS Update Interval (s)',
-                    language: 'Language', diagnostics: 'Diagnostics', gpsTest: 'GPS Test', resetAll: 'Reset All Data', close: 'Close',
+                    language: 'Language', invertCompass: 'Invert Compass Direction', diagnostics: 'Diagnostics', gpsTest: 'GPS Test', resetAll: 'Reset All Data', close: 'Close',
                     error: 'Error', alert: 'Alert', warning: 'Warning',
                     gpxFileError: 'No valid track points (&lt;trkpt&gt;) found in the GPX file.',
                     fileReadError: 'An error occurred while reading the file.',
@@ -425,8 +429,8 @@
                     finalMarkerY = screenMarkerY;
 
                     if (state.map.mode === 'head-up') {
-                        // Inverting the rotation direction to counteract device-specific issues.
-                        mapGroupTransform = `translate(${finalMarkerX}, ${finalMarkerY}) rotate(${state.position.heading}) translate(${-projected.x}, ${-projected.y})`;
+                        const rotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
+                        mapGroupTransform = `translate(${finalMarkerX}, ${finalMarkerY}) rotate(${rotation}) translate(${-projected.x}, ${-projected.y})`;
                     } else { 
                         mapGroupTransform = `translate(${finalMarkerX - projected.x}, ${finalMarkerY - projected.y})`;
                     }
@@ -437,8 +441,8 @@
                     if (state.map.mode === 'head-up') {
                         const centerX = vb.x + vb.width / 2;
                         const centerY = vb.y + vb.height / 2;
-                        // Inverting the rotation direction here as well.
-                        mapGroupTransform = `rotate(${state.position.heading}, ${centerX}, ${centerY})`;
+                        const rotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
+                        mapGroupTransform = `rotate(${rotation}, ${centerX}, ${centerY})`;
                     }
                 }
 
@@ -566,8 +570,10 @@
                     const defaultLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
                     state.settings.language = defaultLang;
                     state.settings.updateInterval = 5000;
+                    state.settings.invertCompass = false;
                     
                     app.updateIntervalSelect.value = '5000';
+                    app.invertCompassToggle.checked = false;
                     setLanguage(defaultLang); 
 
                     showModal('alert', 'resetSuccess');
@@ -606,6 +612,10 @@
                         updatePosition();
                     }
                 };
+                app.invertCompassToggle.addEventListener('change', (e) => {
+                    state.settings.invertCompass = e.target.checked;
+                    if(state.map.mode === 'head-up') updateMap();
+                });
                 
                 const orientationEvent = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
                 if (window.DeviceOrientationEvent) window.addEventListener(orientationEvent, handleDeviceOrientation, true);
