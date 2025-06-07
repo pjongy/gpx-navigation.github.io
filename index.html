@@ -150,7 +150,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v15'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v16'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -165,7 +165,7 @@
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
                 position: { current: null, heading: 0, snapped: null, headingHistory: [], lastCompassUpdate: 0 },
-                map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 },
+                map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2, markerScale: 1 },
                 screen: { orientation: 0 },
                 settings: { updateInterval: 15000, compassInterval: 0, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
             };
@@ -174,7 +174,7 @@
                 EARTH_RADIUS_KM: 6371, 
                 HEADING_SMOOTHING_SAMPLES: 5, 
                 ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, 'fit'],
-                MARKER_BASE_SCALE_M: 200 
+                MARKER_SIZE_M: 30
             };
             
             const i18n = {
@@ -292,6 +292,11 @@
                 const projectedEnd = projectPoint(state.gpx.points[state.gpx.points.length - 1].lat, state.gpx.points[state.gpx.points.length - 1].lon);
                 const projectedDist = Math.sqrt((projectedEnd.x - projectedStart.x)**2 + (projectedEnd.y - projectedStart.y)**2);
                 state.gpx.metersPerUnit = projectedDist > 0 ? totalDistanceMeters / projectedDist : 1;
+                
+                const markerSizeInMapUnits = CONSTANTS.MARKER_SIZE_M / state.gpx.metersPerUnit;
+                const baseMarkerHeight = 24; // from polygon points="0,-12..."
+                state.map.markerScale = markerSizeInMapUnits / baseMarkerHeight;
+
                 setZoom('fit');
             };
             const haversineDistance = (p1, p2) => {
@@ -436,7 +441,7 @@
                 const s = String(state.tracking.elapsedTime % 60).padStart(2, '0');
                 app.timeValue.textContent = `${h}:${m}:${s}`;
             };
-
+            
             const updateScaleBar = () => {
                 if (state.gpx.points.length === 0 || !state.gpx.metersPerUnit || CONSTANTS.ZOOM_SCALES[state.map.zoomLevel] === 'fit') {
                     app.scaleContainer.style.opacity = '0';
@@ -451,7 +456,7 @@
 
                 const pixelsPerMeter = mapPixelWidth / viewWidthInMeters;
 
-                const idealDistanceMeters = 80 / pixelsPerMeter;
+                let idealDistanceMeters = 80 / pixelsPerMeter; 
                 const magnitude = Math.pow(10, Math.floor(Math.log10(idealDistanceMeters)));
                 const residual = idealDistanceMeters / magnitude;
 
@@ -460,7 +465,7 @@
                 else if (residual < 3.5) niceDistance = 2 * magnitude;
                 else if (residual < 7.5) niceDistance = 5 * magnitude;
                 else niceDistance = 10 * magnitude;
-
+                
                 const barWidthPixels = niceDistance * pixelsPerMeter;
 
                 app.scaleBar.style.width = `${barWidthPixels}px`;
@@ -509,10 +514,7 @@
                     }
                 }
                 
-                const baseViewBoxWidth = CONSTANTS.MARKER_BASE_SCALE_M / state.gpx.metersPerUnit;
-                const markerScale = vb.width / baseViewBoxWidth;
-                
-                app.marker.setAttribute('transform', `translate(${finalMarkerX}, ${finalMarkerY}) rotate(0) scale(${markerScale})`);
+                app.marker.setAttribute('transform', `translate(${finalMarkerX}, ${finalMarkerY}) rotate(0) scale(${state.map.markerScale})`);
                 app.mapGroup.setAttribute('transform', mapGroupTransform);
                 updateScaleBar();
             };
@@ -520,12 +522,21 @@
             const setZoom = (levelOrMode) => {
                 if (state.gpx.points.length === 0) return;
                 let newLevel;
-                if(levelOrMode === 'in') newLevel = Math.max(0, state.map.zoomLevel - 1);
-                else if(levelOrMode === 'out') newLevel = Math.min(CONSTANTS.ZOOM_SCALES.length - 1, state.map.zoomLevel + 1);
-                else if(levelOrMode === 'fit') newLevel = CONSTANTS.ZOOM_SCALES.length - 1;
-                else if(typeof levelOrMode === 'number') newLevel = levelOrMode;
-                else newLevel = state.map.zoomLevel;
 
+                if (levelOrMode === 'in') {
+                    newLevel = Math.max(0, state.map.zoomLevel - 1);
+                } else if (levelOrMode === 'out') {
+                    newLevel = Math.min(CONSTANTS.ZOOM_SCALES.length - 1, state.map.zoomLevel + 1);
+                } else if (levelOrMode === 'fit') {
+                    newLevel = CONSTANTS.ZOOM_SCALES.length - 1;
+                } else if (typeof levelOrMode === 'number') {
+                    newLevel = levelOrMode;
+                } else {
+                    newLevel = state.map.zoomLevel;
+                }
+                
+                if (newLevel === state.map.zoomLevel && typeof levelOrMode !== 'number' && levelOrMode !== 'fit') return;
+                
                 state.map.zoomLevel = newLevel;
 
                 const vb = state.map.viewBox;
@@ -554,7 +565,7 @@
                 const target = e.target.closest('[data-action]');
                 if (!target) return;
                 const action = target.dataset.action;
-                if (['center-map', 'toggle-map-mode'].includes(action) || action.startsWith('zoom')) {
+                if (['center-map', 'toggle-map-mode', 'zoom-reset', 'zoom-in', 'zoom-out', 'zoom-fit'].includes(action)) {
                     if (state.gpx.points.length === 0) return showModal('alert', 'noGpxFile');
                 }
                 switch (action) {
@@ -562,7 +573,11 @@
                     case 'toggle-tracking': toggleTracking(); break;
                     case 'gps-test': navigator.geolocation.getCurrentPosition( p => showModal('gpsTestSuccess', `Lat: ${p.coords.latitude.toFixed(5)}<br>Lon: ${p.coords.longitude.toFixed(5)}`), onGpsError ); break;
                     case 'reset-all': showModal('warning', 'resetConfirm', [{ textKey: 'cancelBtn' }, { textKey: 'resetConfirmBtn', class: 'modal-confirm-btn', onClick: () => resetData(true) }]); break;
-                    case 'center-map': state.map.isCentered = true; app.centerMapBtn.classList.add('active'); updateMap(); break;
+                    case 'center-map': 
+                        state.map.isCentered = true; 
+                        app.centerMapBtn.classList.add('active'); 
+                        updateMap(); 
+                        break;
                     case 'toggle-map-mode':
                         state.map.mode = state.map.mode === 'north-up' ? 'head-up' : 'north-up';
                         app.mapModeBtn.classList.toggle('active', state.map.mode === 'head-up');
@@ -573,7 +588,11 @@
                         break;
                     case 'zoom-in': setZoom('in'); break;
                     case 'zoom-out': setZoom('out'); break;
-                    case 'zoom-reset': setZoom(2);
+                    case 'zoom-reset': 
+                        state.map.isCentered = true; 
+                        app.centerMapBtn.classList.add('active'); 
+                        setZoom(2); // 200m
+                        break;
                     case 'zoom-fit':
                         if (state.map.mode === 'head-up') {
                             state.map.mode = 'north-up';
@@ -616,7 +635,7 @@
 
                 Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false });
                 Object.assign(state.position, { current: null, heading: 0, snapped: null, headingHistory: [], lastCompassUpdate: 0 });
-                Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 });
+                Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2, markerScale: 1 });
 
                 app.userPath.setAttribute('d', '');
                 app.marker.setAttribute('visibility', 'hidden');
