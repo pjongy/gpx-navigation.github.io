@@ -143,14 +143,18 @@
             <div class="setting-item"><label for="invert-compass" data-i18n="invertCompass">나침반 방향 반전</label><label class="toggle-switch"><input type="checkbox" id="invert-compass"><span class="slider"></span></label></div>
             <div class="setting-item"><label data-i18n="language">언어</label><label class="toggle-switch"><input type="checkbox" id="lang-toggle"><span class="slider"></span></label></div>
         </div>
-        <div class="menu-section"><h3 data-i18n="diagnostics">진단 및 초기화</h3><button class="menu-btn" data-action="gps-test" data-i18n="gpsTest">GPS 테스트</button><button class="menu-btn" data-action="reset-all" data-i18n="resetAll" style="background-color: #5d2a2a;">모든 데이터 초기화</button></div>
+        <div class="menu-section"><h3 data-i18n="diagnostics">진단 및 초기화</h3>
+            <button class="menu-btn" data-action="gps-test" data-i18n="gpsTest">GPS 테스트</button>
+            <button class="menu-btn" data-action="retry-wakelock" data-i18n="retryWakelock">화면 꺼짐 방지 재시도</button>
+            <button class="menu-btn" data-action="reset-all" data-i18n="resetAll" style="background-color: #5d2a2a;">모든 데이터 초기화</button>
+        </div>
     </div>
     <div id="modal"><div class="modal-content"><h2 id="modal-title"></h2><p id="modal-message"></p><div id="modal-buttons"><button id="modal-close-btn" data-i18n="close">닫기</button></div></div></div>
 
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v17'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v18'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -158,7 +162,7 @@
             const $ = (selector) => document.querySelector(selector);
             
             const app = {
-                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), compassIntervalSelect: $('#compass-interval'), invertCompassToggle: $('#invert-compass'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'), scaleContainer: $('#scale-container'), scaleLabel: $('#scale-label'), scaleBar: $('#scale-bar'),
+                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), compassIntervalSelect: $('#compass-interval'), invertCompassToggle: $('#invert-compass'), retryWakelockBtn: $('[data-action="retry-wakelock"]'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'), scaleContainer: $('#scale-container'), scaleLabel: $('#scale-label'), scaleBar: $('#scale-bar'),
             };
 
             const state = {
@@ -182,7 +186,9 @@
                     fileManagement: '파일 관리', openGpxFile: 'GPX 파일 열기', journeyLog: '여정 기록', startTracking: '추적 시작',
                     stopTracking: '추적 중지', saveJourneySummary: '여정 요약 저장', settings: '설정', updateInterval: 'GPS 갱신 주기 (초)',
                     compassInterval: '나침반 갱신 주기 (초)', realtime: '실시간',
-                    language: '언어', invertCompass: '나침반 방향 반전', diagnostics: '진단 및 초기화', gpsTest: 'GPS 테스트', resetAll: '모든 데이터 초기화', close: '닫기',
+                    language: '언어', invertCompass: '나침반 방향 반전', diagnostics: '진단 및 초기화', gpsTest: 'GPS 테스트', 
+                    retryWakelock: '화면 꺼짐 방지 재시도', wakelockSuccess: '화면 꺼짐 방지가 활성화되었습니다.',
+                    resetAll: '모든 데이터 초기화', close: '닫기',
                     error: '오류', alert: '알림', warning: '경고',
                     gpxFileError: 'GPX 파일에 유효한 트랙(&lt;trkpt&gt;) 데이터가 없습니다.',
                     fileReadError: '파일을 읽는 도중 오류가 발생했습니다.',
@@ -200,7 +206,9 @@
                     fileManagement: 'File Management', openGpxFile: 'Open GPX File', journeyLog: 'Journey Log', startTracking: 'Start Tracking',
                     stopTracking: 'Stop Tracking', saveJourneySummary: 'Save Journey Summary', settings: 'Settings', updateInterval: 'GPS Update Interval (sec)',
                     compassInterval: 'Compass Update Rate (sec)', realtime: 'Real-time',
-                    language: 'Language', invertCompass: 'Invert Compass Direction', diagnostics: 'Diagnostics', gpsTest: 'GPS Test', resetAll: 'Reset All Data', close: 'Close',
+                    language: 'Language', invertCompass: 'Invert Compass Direction', diagnostics: 'Diagnostics', gpsTest: 'GPS Test', 
+                    retryWakelock: 'Retry Screen Wake Lock', wakelockSuccess: 'Screen wake lock has been activated.',
+                    resetAll: 'Reset All Data', close: 'Close',
                     error: 'Error', alert: 'Alert', warning: 'Warning',
                     gpxFileError: 'No valid track points (&lt;trkpt&gt;) found in the GPX file.',
                     fileReadError: 'An error occurred while reading the file.',
@@ -322,6 +330,25 @@
                 return { point: closest, distance: haversineDistance(p, closest) };
             };
             
+            const requestWakeLock = async (showFeedback = false) => {
+                if (!('wakeLock' in navigator)) {
+                    if (showFeedback) showModal('alert', 'wakelockFail');
+                    return;
+                }
+                try {
+                    if (state.wakeLock) await state.wakeLock.release();
+                    state.wakeLock = await navigator.wakeLock.request('screen');
+                    state.wakeLock.addEventListener('release', () => {
+                        state.wakeLock = null;
+                        console.log('Wake Lock released');
+                    });
+                    if (showFeedback) showModal('alert', 'wakelockSuccess');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                    if (showFeedback) showModal('alert', 'wakelockFail');
+                }
+            };
+
             const checkGpsPermission = async () => {
                 if (!navigator.permissions) return;
                 try {
@@ -340,26 +367,26 @@
                 state.tracking.isActive = true;
                 app.trackBtn.textContent = i18n[state.settings.language].stopTracking;
                 app.trackBtn.style.backgroundColor = 'var(--accent-color)';
+                app.retryWakelockBtn.style.display = 'block';
                 state.tracking.startTime = Date.now();
                 state.tracking.timerId = setInterval(updateTimer, 1000);
                 updatePosition();
-                setZoom(2); // Set default zoom to 200m
-                try {
-                    if ('wakeLock' in navigator) state.wakeLock = await navigator.wakeLock.request('screen');
-                } catch (err) {
-                    console.error(`${err.name}, ${err.message}`);
-                    showModal('alert', 'wakelockFail');
-                }
+                setZoom(2);
+                requestWakeLock(false);
             };
             const stopTracking = () => {
                 state.tracking.isActive = false;
                 app.trackBtn.textContent = i18n[state.settings.language].startTracking;
                 app.trackBtn.style.backgroundColor = '';
+                app.retryWakelockBtn.style.display = 'none';
                 clearTimeout(state.tracking.gpsTimeoutId);
                 clearInterval(state.tracking.timerId);
                 state.tracking.gpsTimeoutId = state.tracking.timerId = null;
                 app.saveBtn.disabled = !state.tracking.startTime;
-                if(state.wakeLock) state.wakeLock.release().then(() => state.wakeLock = null);
+                if(state.wakeLock) {
+                    state.wakeLock.release();
+                    state.wakeLock = null;
+                }
             };
             const scheduleNextPositionUpdate = () => {
                 if (!state.tracking.isActive) return;
@@ -575,6 +602,7 @@
                     case 'toggle-tracking': toggleTracking(); break;
                     case 'gps-test': navigator.geolocation.getCurrentPosition( p => showModal('gpsTestSuccess', `Lat: ${p.coords.latitude.toFixed(5)}<br>Lon: ${p.coords.longitude.toFixed(5)}`), onGpsError ); break;
                     case 'reset-all': showModal('warning', 'resetConfirm', [{ textKey: 'cancelBtn' }, { textKey: 'resetConfirmBtn', class: 'modal-confirm-btn', onClick: () => resetData(true) }]); break;
+                    case 'retry-wakelock': requestWakeLock(true); break;
                     case 'center-map': 
                         state.map.isCentered = true; 
                         app.centerMapBtn.classList.add('active'); 
@@ -649,6 +677,7 @@
                 app.mapModeBtn.classList.remove('active');
                 app.centerMapBtn.classList.add('active');
                 app.trackBtn.style.backgroundColor = '';
+                app.retryWakelockBtn.style.display = 'none';
                 
                 app.mapGroup.setAttribute('transform', '');
                 app.mapSvg.setAttribute('viewBox', '0 0 1000 1000');
@@ -739,6 +768,7 @@
                 window.addEventListener('pointerup', () => state.map.panning.isDown = false);
                 app.langToggle.addEventListener('change', (e) => setLanguage(e.target.checked ? 'en' : 'ko'));
                 app.trackBtn.disabled = true;
+                app.retryWakelockBtn.style.display = 'none';
                 updateScaleBar();
             };
             
