@@ -3,120 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>오프라인 GPS 네비게이터</title>
+    <title>GPX Voyager 🛰️</title>
+    <meta property="og:title" content="GPX Voyager 🛰️">
+    <meta property="og:description" content="인터넷 없이, GPX 경로를 따라 항해하세요.">
+    <meta property="og:image" id="og-image" content="">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon-192x192.png">
-
+    <link rel="apple-touch-icon" id="apple-touch-icon" href="">
+    <link rel="icon" id="favicon" href="">
+    <script>
+        (function createIcons() {
+            const svgIconString = `<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" fill="none"><rect width="192" height="192" rx="40" fill="black"/><path d="M96 32L128 96L96 112L64 96L96 32Z" fill="#ff6b6b"/><path d="M96 160L128 96L96 112L64 96L96 160Z" fill="#d3d3d3"/></svg>`.trim();
+            const dataUrl = `data:image/svg+xml;base64,${btoa(svgIconString)}`;
+            document.getElementById('favicon').href = dataUrl;
+            document.getElementById('apple-touch-icon').href = dataUrl;
+            document.getElementById('og-image').content = dataUrl;
+            const manifest = { "name": "GPX Voyager", "short_name": "Voyager", "start_url": ".", "display": "standalone", "background_color": "#000000", "theme_color": "#ff6b6b", "description": "인터넷 연결 없이 GPX 경로를 추적하는 웹 앱", "icons": [{"src": dataUrl, "sizes": "192x192", "type": "image/svg+xml"}] };
+            document.querySelector('link[rel="manifest"]').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type: 'application/json'}));
+        })();
+    </script>
     <style>
         :root {
-            --bg-color: #000000;
-            --primary-text-color: #d3d3d3;
-            --secondary-text-color: #a9a9a9;
-            --accent-color: #ff6b6b;
-            --gpx-track-color: #a9a9a9;
-            --user-path-color: #d3d3d3;
-            --marker-color: #ff6b6b;
-            --button-bg-color: #000000;
-            --button-active-bg-color: #333333;
+            --bg-color: #000000; --primary-text-color: #d3d3d3; --secondary-text-color: #a9a9a9;
+            --accent-color: #ff6b6b; --gpx-track-color: #a9a9a9; --user-path-color: #d3d3d3;
+            --marker-color: #ff6b6b; --button-bg-color: #000000; --button-active-bg-color: #333333;
             --panel-bg-color: rgba(20, 20, 20, 0.95);
         }
-        html, body {
-            width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
-            background-color: var(--bg-color); color: var(--primary-text-color);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: var(--bg-color); color: var(--primary-text-color); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; -webkit-tap-highlight-color: transparent; }
         #app-container { display: flex; width: 100%; height: 100%; background-color: var(--bg-color); }
         @media (max-width: 600px), (orientation: portrait) {
-            #app-container { flex-direction: column; }
-            #info-panel { width: 100%; height: 30%; flex-shrink: 0; }
+            #app-container { flex-direction: column; } #info-panel { width: 100%; height: 30%; flex-shrink: 0; }
             #map-container { width: 100%; height: 70%; flex-grow: 1; }
             #journey-box { flex-direction: row; align-items: center; }
             #journey-box .sub-info-box .value { font-size: clamp(1em, 4vw, 1.5em); }
-
         }
         @media (min-width: 601px) and (orientation: landscape) {
-            #app-container { flex-direction: row; }
-            #info-panel { width: 30%; max-width: 300px; height: 100%; }
+            #app-container { flex-direction: row; } #info-panel { width: 30%; max-width: 300px; height: 100%; }
             #map-container { width: 70%; height: 100%; }
             #journey-box { flex-direction: column; }
             #journey-box .sub-info-box .value { font-size: 1.1em; }
         }
         #info-panel { display: flex; flex-direction: column; padding: 10px; box-sizing: border-box; }
-        #dashboard {
-            flex-grow: 1; display: grid;
-            grid-template-rows: 1fr 1fr;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px; min-height: 0;
-        }
-        .info-box { 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-            align-items: center; 
-            background: var(--bg-color);
-            border: 1px solid var(--button-active-bg-color);
-            border-radius: 8px; 
-            padding: 10px; 
-            min-width: 0; 
-        }
-        #speed-box { grid-column: 1 / 3; }
-        #journey-box {
-            grid-column: 1 / 2;
-            justify-content: space-around;
-        }
+        #dashboard { flex-grow: 1; display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 0; }
+        .info-box { display: flex; flex-direction: column; justify-content: center; align-items: center; background: var(--bg-color); border: 1px solid var(--button-active-bg-color); border-radius: 8px; padding: 10px; min-width: 0; }
+        #speed-box { grid-column: 1 / 3; } #journey-box { grid-column: 1 / 2; justify-content: space-around; }
         #avg-speed-box { grid-column: 2 / 3; }
         .value { font-size: clamp(1.5em, 5vw, 2.2em); font-weight: bold; }
         .unit, .label { font-size: clamp(0.7em, 3vw, 0.9em); color: var(--secondary-text-color); }
         #speed-box .value { font-size: clamp(2.5em, 10vw, 4em); }
         #journey-box .sub-info-box { text-align: center; }
-
         #map-container { position: relative; background-color: var(--bg-color); }
         #map-svg { width: 100%; height: 100%; touch-action: none; cursor: grab; background-color: var(--bg-color); }
         #map-svg:active { cursor: grabbing; }
         #gpx-track, #user-path { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
         #gpx-track { stroke: var(--gpx-track-color); stroke-width: 3px; }
         #user-path { stroke: var(--user-path-color); stroke-width: 5px; }
-        #current-pos-marker {
-            fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px;
-            vector-effect: non-scaling-stroke; transform-origin: center;
-            transition: transform 0.2s linear;
-            pointer-events: none;
-        }
-
+        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; vector-effect: non-scaling-stroke; transform-origin: center; transition: transform 0.2s linear; pointer-events: none; }
         .map-controls-wrapper { position: absolute; bottom: 15px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
-        #left-controls { left: 15px; }
-        #right-controls { right: 15px; }
+        #left-controls { left: 15px; } #right-controls { right: 15px; }
         #top-right-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 10; }
-        .control-btn {
-            width: 36px; height: 36px;
-            background-color: var(--button-bg-color); 
-            border: 1px solid #444;
-            border-radius: 50%; display: flex; justify-content: center; align-items: center;
-            cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: background-color 0.2s, transform 0.1s;
-        }
-        .control-btn[data-action^="zoom"] {
-            color: #FFFFFF;
-            font-size: 18px;
-            font-weight: bold;
-        }
+        .control-btn { width: 36px; height: 36px; background-color: var(--button-bg-color); border: 1px solid #444; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: background-color 0.2s, transform 0.1s; }
+        .control-btn[data-action^="zoom"] { color: #FFFFFF; font-size: 18px; font-weight: bold; }
         .control-btn:active { transform: scale(0.95); background-color: var(--button-active-bg-color); }
         .control-btn.active { background-color: var(--accent-color); }
         .control-btn svg { width: 20px; height: 20px; stroke: var(--primary-text-color); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
         .control-btn.active svg { stroke: var(--bg-color); fill: var(--bg-color); }
         .control-btn[data-action="zoom-fit"] svg { fill: var(--primary-text-color); stroke-width: 0; }
         .control-btn.active [data-action="zoom-fit"] svg, .control-btn.active [data-action="toggle-map-mode"] svg, .control-btn.active [data-action="center-map"] svg { fill: var(--bg-color); }
-
         #menu-btn { position: absolute; top: 15px; left: 15px; z-index: 20; }
-        #menu-panel {
-            position: fixed; top: 0; left: 0; width: 300px; max-width: 80vw; height: 100%;
-            background-color: var(--panel-bg-color); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
-            box-shadow: 2px 0 10px rgba(0,0,0,0.5); transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            transform: translateX(-105%); z-index: 1000; padding: 20px; box-sizing: border-box;
-            display: flex; flex-direction: column; gap: 20px; overflow-y: auto;
-        }
+        #menu-panel { position: fixed; top: 0; left: 0; width: 300px; max-width: 80vw; height: 100%; background-color: var(--panel-bg-color); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 2px 0 10px rgba(0,0,0,0.5); transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); transform: translateX(-105%); z-index: 1000; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
         #menu-panel.open { transform: translateX(0); }
         #menu-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999; opacity: 0; visibility: hidden; transition: opacity 0.3s, visibility 0.3s; }
         #menu-overlay.open { opacity: 1; visibility: visible; }
@@ -134,14 +90,13 @@
         .modal-close-btn, .modal-confirm-btn { background: var(--button-bg-color); color: var(--primary-text-color); border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; }
         .modal-close-btn:hover, .modal-confirm-btn:hover { background-color: var(--button-active-bg-color); }
         .modal-confirm-btn { background-color: var(--accent-color); color: var(--bg-color); font-weight: bold; margin-left: 10px; }
-        
-        /* Language Toggle Switch */
         .lang-switch { display: flex; align-items: center; cursor: pointer; }
         .lang-switch input { opacity: 0; width: 0; height: 0; }
         .slider { position: relative; display: block; width: 50px; height: 26px; background-color: #ccc; border-radius: 26px; transition: .4s; }
         .slider:before { position: absolute; content: "KO"; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; color: black; font-size: 10px; font-weight: bold; display: flex; justify-content: center; align-items: center; }
         input:checked + .slider { background-color: var(--accent-color); }
         input:checked + .slider:before { transform: translateX(24px); content: "EN"; }
+        #off-route-warning { position: absolute; top: 0; left: 0; width: 100%; background-color: rgba(139, 0, 0, 0.8); color: white; text-align: center; padding: 8px 0; font-weight: bold; z-index: 5; display: none; }
     </style>
 </head>
 <body>
@@ -157,6 +112,7 @@
             </div>
         </div>
         <div id="map-container">
+            <div id="off-route-warning" data-i18n="offRouteWarning">경로를 이탈했습니다.</div>
             <svg id="map-svg">
                 <g id="map-group"><path id="gpx-track"></path><path id="user-path"></path></g>
                 <polygon id="current-pos-marker" points="0,-12 9,12 -9,12" visibility="hidden"></polygon>
@@ -178,14 +134,14 @@
 
     <script>
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-nav-cache-final'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-final'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
         document.addEventListener('DOMContentLoaded', () => {
             const $ = (selector) => document.querySelector(selector);
             const app = {
-                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'),
+                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
             };
             const state = {
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
@@ -334,10 +290,13 @@
                 if (offRouteDistance > 0.1) { // 100m
                     if (!state.tracking.isOffRoute) {
                         state.tracking.isOffRoute = true;
-                        showModal('warning', 'offRouteWarning');
+                        app.offRouteWarning.style.display = 'block';
                     }
                 } else {
-                    state.tracking.isOffRoute = false;
+                    if (state.tracking.isOffRoute) {
+                       state.tracking.isOffRoute = false;
+                       app.offRouteWarning.style.display = 'none';
+                    }
                 }
 
                 if (state.tracking.previousPoint) { state.tracking.totalDistance += haversineDistance(state.tracking.previousPoint, state.position.snapped); }
@@ -367,8 +326,10 @@
             };
             const findClosestPointOnSegment = (p, a, b) => { const ap = { x: p.lon - a.lon, y: p.lat - a.lat }, ab = { x: b.lon - a.lon, y: b.lat - a.lat }; let t = (ap.x * ab.x + ap.y * ab.y) / (ab.x ** 2 + ab.y ** 2); t = Math.max(0, Math.min(1, t)); const closest = { lat: a.lat + ab.y * t, lon: a.lon + ab.x * t }; return { point: closest, distance: haversineDistance(p, closest) }; };
             const updateMap = () => {
-                if (!state.position.snapped) return;
-                const projected = projectPoint(state.position.snapped.lat, state.position.snapped.lon);
+                const positionToProject = state.tracking.isOffRoute ? { lat: state.position.current.coords.latitude, lon: state.position.current.coords.longitude } : state.position.snapped;
+                if (!positionToProject) return;
+
+                const projected = projectPoint(positionToProject.lat, positionToProject.lon);
                 
                 if (app.marker.style.visibility === 'hidden') {
                      app.marker.style.visibility = 'visible';
@@ -412,8 +373,9 @@
                     vb.x = pathBounds.x - pathBounds.width * 0.05; vb.y = pathBounds.y - pathBounds.height * 0.05;
                     vb.width = pathBounds.width * 1.1; vb.height = pathBounds.height * 1.1;
                 } else {
+                    const centerPoint = state.tracking.isOffRoute ? state.position.current.coords : state.position.snapped;
+                    const center = centerPoint ? projectPoint(centerPoint.lat, centerPoint.lon) : { x: vb.x + vb.width / 2, y: vb.y + vb.height / 2};
                     const newWidthProjected = scaleTarget / state.gpx.metersPerUnit;
-                    const center = { x: state.position.snapped ? projectPoint(state.position.snapped.lat, state.position.snapped.lon).x : (vb.x + vb.width / 2), y: state.position.snapped ? projectPoint(state.position.snapped.lat, state.position.snapped.lon).y : (vb.y + vb.height / 2), };
                     vb.width = newWidthProjected; vb.height = newWidthProjected * ratio;
                     vb.x = center.x - vb.width / 2; vb.y = center.y - vb.height / 2;
                 }
@@ -468,6 +430,7 @@
                 if (state.tracking.isActive) stopTracking();
                 Object.assign(state, { gpx: { points: [], bounds: null, metersPerUnit:1 }, tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false }, position: { current: null, heading: 0, snapped: null, headingHistory: [] }, });
                 app.gpxTrack.setAttribute('d', ''); app.userPath.setAttribute('d', ''); app.marker.style.visibility = 'hidden';
+                app.offRouteWarning.style.display = 'none';
                 updateDashboard(0, 0, 0); app.timeValue.textContent = '00:00:00'; app.trackBtn.disabled = true; app.saveBtn.disabled = true;
                 if (fullReset) { app.updateIntervalSelect.value = '5000'; state.settings.updateInterval = 5000; showModal('alert', '초기화가 완료되었습니다.'); }
             };
