@@ -60,10 +60,10 @@
         #gpx-track, #user-path { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
         #gpx-track { stroke: var(--gpx-track-color); stroke-width: 3px; }
         #user-path { stroke: var(--user-path-color); stroke-width: 5px; }
-        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; /* vector-effect is removed to allow scaling */ transform-origin: center; transition: transform 0.2s linear; pointer-events: none; }
+        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; transform-origin: center; transition: transform 0.2s linear; pointer-events: none; }
         .map-controls-wrapper { position: absolute; bottom: 15px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
         #left-controls { left: 15px; } #right-controls { right: 15px; }
-        #top-right-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 10; }
+        #top-right-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 10; align-items: center; }
         .control-btn { width: 36px; height: 36px; background-color: var(--button-bg-color); border: 1px solid #444; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: background-color 0.2s, transform 0.1s; }
         .control-btn[data-action^="zoom"] { color: #FFFFFF; font-size: 18px; font-weight: bold; }
         .control-btn:active { transform: scale(0.95); background-color: var(--button-active-bg-color); }
@@ -102,6 +102,8 @@
         #invert-compass:not(:checked) + .slider:before { content: "-"; font-size: 18px; line-height: 1; }
         #invert-compass:checked + .slider:before { content: "+"; font-size: 16px; line-height: 1;}
         #off-route-warning { position: absolute; top: 0; left: 0; width: 100%; background-color: rgba(139, 0, 0, 0.8); color: white; text-align: center; padding: 8px 0; font-weight: bold; z-index: 5; display: none; }
+        #scale-container { display: flex; flex-direction: column; align-items: center; color: var(--primary-text-color); font-size: 12px; text-shadow: 1px 1px 2px black; pointer-events: none; transition: opacity 0.3s; }
+        #scale-bar { height: 2px; background-color: var(--primary-text-color); border-left: 2px solid var(--primary-text-color); border-right: 2px solid var(--primary-text-color); box-sizing: content-box; }
     </style>
 </head>
 <body>
@@ -122,7 +124,10 @@
                 <g id="map-group"><path id="gpx-track"></path><path id="user-path"></path></g>
                 <polygon id="current-pos-marker" points="0,-12 9,12 -9,12" visibility="hidden"></polygon>
             </svg>
-            <div id="top-right-controls"><button class="control-btn" data-action="toggle-fullscreen" title="전체화면"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" fill="currentColor"></path></svg></button></div>
+            <div id="top-right-controls">
+                <div id="scale-container"><div id="scale-label"></div><div id="scale-bar"></div></div>
+                <button class="control-btn" data-action="toggle-fullscreen" title="전체화면"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" fill="currentColor"></path></svg></button>
+            </div>
             <div id="left-controls" class="map-controls-wrapper"><button class="control-btn" data-action="zoom-in" title="확대">+</button><button class="control-btn" data-action="zoom-out" title="축소">-</button><button class="control-btn" data-action="zoom-reset" title="200m 스케일">0</button><button class="control-btn" data-action="zoom-fit" title="전체 경로 보기"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42L17.3 18.7 15 21h6z"></path></svg></button></div>
             <div id="right-controls" class="map-controls-wrapper"><button class="control-btn" data-action="toggle-map-mode" title="지도 모드 전환"><svg viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 2.99l.71-.71z"></path></svg></button><button class="control-btn active" data-action="center-map" title="현재 위치로 중앙 정렬"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4s-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"></path></svg></button></div>
             <button class="control-btn" id="menu-btn" data-action="toggle-menu"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"></path></svg></button>
@@ -145,7 +150,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v14'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v15'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -153,7 +158,7 @@
             const $ = (selector) => document.querySelector(selector);
             
             const app = {
-                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), compassIntervalSelect: $('#compass-interval'), invertCompassToggle: $('#invert-compass'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'),
+                infoPanel: $('#info-panel'), mapContainer: $('#map-container'), menuPanel: $('#menu-panel'), menuOverlay: $('#menu-overlay'), speedValue: $('#speed-value'), distanceValue: $('#distance-value'), avgSpeedValue: $('#avg-speed-value'), timeValue: $('#time-value'), mapSvg: $('#map-svg'), mapGroup: $('#map-group'), gpxTrack: $('#gpx-track'), userPath: $('#user-path'), marker: $('#current-pos-marker'), trackBtn: $('[data-action="toggle-tracking"]'), mapModeBtn: $('[data-action="toggle-map-mode"]'), centerMapBtn: $('[data-action="center-map"]'), saveBtn: $('[data-action="save-journey"]'), gpxFileInput: $('#gpx-file-input'), updateIntervalSelect: $('#update-interval'), compassIntervalSelect: $('#compass-interval'), invertCompassToggle: $('#invert-compass'), modal: $('#modal'), modalTitle: $('#modal-title'), modalMessage: $('#modal-message'), modalButtons: $('#modal-buttons'), langToggle: $('#lang-toggle'), offRouteWarning: $('#off-route-warning'), scaleContainer: $('#scale-container'), scaleLabel: $('#scale-label'), scaleBar: $('#scale-bar'),
             };
 
             const state = {
@@ -169,8 +174,7 @@
                 EARTH_RADIUS_KM: 6371, 
                 HEADING_SMOOTHING_SAMPLES: 5, 
                 ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, 'fit'],
-                MARKER_BASE_SIZE_PX: 44, // Target marker size in pixels
-                MARKER_BASE_SCALE_M: 200 // The map scale at which the marker has its base size
+                MARKER_BASE_SCALE_M: 200 
             };
             
             const i18n = {
@@ -432,6 +436,36 @@
                 const s = String(state.tracking.elapsedTime % 60).padStart(2, '0');
                 app.timeValue.textContent = `${h}:${m}:${s}`;
             };
+
+            const updateScaleBar = () => {
+                if (state.gpx.points.length === 0 || !state.gpx.metersPerUnit || CONSTANTS.ZOOM_SCALES[state.map.zoomLevel] === 'fit') {
+                    app.scaleContainer.style.opacity = '0';
+                    return;
+                }
+                app.scaleContainer.style.opacity = '1';
+
+                const viewWidthInMeters = state.map.viewBox.width * state.gpx.metersPerUnit;
+                const mapPixelWidth = app.mapSvg.getBoundingClientRect().width;
+
+                if (mapPixelWidth <= 0) return;
+
+                const pixelsPerMeter = mapPixelWidth / viewWidthInMeters;
+
+                const idealDistanceMeters = 80 / pixelsPerMeter;
+                const magnitude = Math.pow(10, Math.floor(Math.log10(idealDistanceMeters)));
+                const residual = idealDistanceMeters / magnitude;
+
+                let niceDistance;
+                if (residual < 1.5) niceDistance = 1 * magnitude;
+                else if (residual < 3.5) niceDistance = 2 * magnitude;
+                else if (residual < 7.5) niceDistance = 5 * magnitude;
+                else niceDistance = 10 * magnitude;
+
+                const barWidthPixels = niceDistance * pixelsPerMeter;
+
+                app.scaleBar.style.width = `${barWidthPixels}px`;
+                app.scaleLabel.textContent = niceDistance >= 1000 ? `${niceDistance / 1000} km` : `${Math.round(niceDistance)} m`;
+            };
             
             const updateMap = () => {
                 const positionToProject = state.tracking.isOffRoute 
@@ -443,7 +477,7 @@
                 
                 if (app.marker.getAttribute('visibility') === 'hidden') {
                     app.marker.setAttribute('visibility', 'visible');
-                    if (state.gpx.points.length > 0) setZoom(2); // Default to 200m
+                    if (state.gpx.points.length > 0) setZoom(2);
                 }
 
                 const vb = state.map.viewBox;
@@ -474,11 +508,13 @@
                         mapGroupTransform = `rotate(${rotation}, ${centerX}, ${centerY})`;
                     }
                 }
-
-                const markerScale = (vb.width / state.gpx.metersPerUnit) / (CONSTANTS.MARKER_BASE_SCALE_M / state.gpx.metersPerUnit);
+                
+                const baseViewBoxWidth = CONSTANTS.MARKER_BASE_SCALE_M / state.gpx.metersPerUnit;
+                const markerScale = vb.width / baseViewBoxWidth;
                 
                 app.marker.setAttribute('transform', `translate(${finalMarkerX}, ${finalMarkerY}) rotate(0) scale(${markerScale})`);
                 app.mapGroup.setAttribute('transform', mapGroupTransform);
+                updateScaleBar();
             };
 
             const setZoom = (levelOrMode) => {
@@ -537,7 +573,7 @@
                         break;
                     case 'zoom-in': setZoom('in'); break;
                     case 'zoom-out': setZoom('out'); break;
-                    case 'zoom-reset': setZoom(2); break; // Reset to 200m scale
+                    case 'zoom-reset': setZoom(2);
                     case 'zoom-fit':
                         if (state.map.mode === 'head-up') {
                             state.map.mode = 'north-up';
@@ -615,6 +651,7 @@
 
                     showModal('alert', 'resetSuccess');
                 }
+                updateScaleBar();
             };
 
             const exportJourneyData = () => {
@@ -640,6 +677,13 @@
                 checkGpsPermission();
                 handleOrientationChange();
                 window.addEventListener('orientationchange', handleOrientationChange);
+
+                let resizeTimeout;
+                window.addEventListener('resize', () => {
+                    clearTimeout(resizeTimeout);
+                    resizeTimeout = setTimeout(updateScaleBar, 100);
+                });
+
 
                 document.body.addEventListener('click', handleAction);
                 document.body.addEventListener('dblclick', handleDoubleClick);
@@ -674,6 +718,7 @@
                 window.addEventListener('pointerup', () => state.map.panning.isDown = false);
                 app.langToggle.addEventListener('change', (e) => setLanguage(e.target.checked ? 'en' : 'ko'));
                 app.trackBtn.disabled = true;
+                updateScaleBar();
             };
             
             init();
