@@ -97,7 +97,6 @@
             border-radius: 50%; display: flex; justify-content: center; align-items: center;
             cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: background-color 0.2s, transform 0.1s;
         }
-        /* 추가된 부분 */
         .control-btn[data-action^="zoom"] {
             color: #FFFFFF;
             font-size: 18px;
@@ -190,7 +189,7 @@
             };
             const state = {
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
-                tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null },
+                tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
                 position: { current: null, heading: 0, snapped: null, headingHistory: [] },
                 map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, panning: {isDown: false, startX: 0, startY: 0 }, zoomLevel: 1 },
                 settings: { updateInterval: 5000, language: 'ko' }, permissions: { gps: 'prompt' }, wakeLock: null,
@@ -203,7 +202,6 @@
                     fileManagement: '파일 관리', openGpxFile: 'GPX 파일 열기', journeyLog: '여정 기록', startTracking: '추적 시작',
                     stopTracking: '추적 중지', saveJourneySummary: '여정 요약 저장', settings: '설정', updateInterval: 'GPS 갱신 주기 (초)',
                     language: '언어', diagnostics: '진단 및 초기화', gpsTest: 'GPS 테스트', resetAll: '모든 데이터 초기화', close: '닫기',
-                    // Modals
                     error: '오류', alert: '알림', warning: '경고',
                     gpxFileError: 'GPX 파일에 유효한 트랙(&lt;trkpt&gt;) 데이터가 없습니다.',
                     fileReadError: '파일을 읽는 도중 오류가 발생했습니다.',
@@ -216,13 +214,13 @@
                     cancelBtn: '취소',
                     wakelockFail: '화면 꺼짐 방지 기능을 활성화할 수 없습니다. 브라우저 설정 또는 배터리 절약 모드를 확인해주세요.',
                     gpsTestSuccess: 'GPS 테스트 성공',
+                    offRouteWarning: '경로를 100m 이상 이탈했습니다.',
                 },
                 en: {
                     currentSpeed: 'Current Speed', totalDistance: 'Distance', totalTime: 'Time', avgSpeed: 'Avg. Speed',
                     fileManagement: 'File Management', openGpxFile: 'Open GPX File', journeyLog: 'Journey Log', startTracking: 'Start Tracking',
                     stopTracking: 'Stop Tracking', saveJourneySummary: 'Save Journey Summary', settings: 'Settings', updateInterval: 'GPS Update Interval (s)',
                     language: 'Language', diagnostics: 'Diagnostics', gpsTest: 'GPS Test', resetAll: 'Reset All Data', close: 'Close',
-                     // Modals
                     error: 'Error', alert: 'Alert', warning: 'Warning',
                     gpxFileError: 'No valid track points (&lt;trkpt&gt;) found in the GPX file.',
                     fileReadError: 'An error occurred while reading the file.',
@@ -235,6 +233,7 @@
                     cancelBtn: 'Cancel',
                     wakelockFail: 'Could not enable screen wake lock. Please check browser settings or battery saver mode.',
                     gpsTestSuccess: 'GPS Test Successful',
+                    offRouteWarning: 'You are more than 100m off the route.',
                 }
             };
 
@@ -330,6 +329,17 @@
                 state.position.current = position; const { latitude, longitude, speed } = position.coords;
                 const closest = findClosestPointOnGpx({ lat: latitude, lon: longitude });
                 state.position.snapped = closest.point;
+
+                const offRouteDistance = haversineDistance({ lat: latitude, lon: longitude }, closest.point);
+                if (offRouteDistance > 0.1) { // 100m
+                    if (!state.tracking.isOffRoute) {
+                        state.tracking.isOffRoute = true;
+                        showModal('warning', 'offRouteWarning');
+                    }
+                } else {
+                    state.tracking.isOffRoute = false;
+                }
+
                 if (state.tracking.previousPoint) { state.tracking.totalDistance += haversineDistance(state.tracking.previousPoint, state.position.snapped); }
                 state.tracking.previousPoint = state.position.snapped;
                 const userPathD = app.userPath.getAttribute('d') || '';
@@ -456,7 +466,7 @@
             };
             const resetData = (fullReset) => {
                 if (state.tracking.isActive) stopTracking();
-                Object.assign(state, { gpx: { points: [], bounds: null, metersPerUnit:1 }, tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null }, position: { current: null, heading: 0, snapped: null, headingHistory: [] }, });
+                Object.assign(state, { gpx: { points: [], bounds: null, metersPerUnit:1 }, tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false }, position: { current: null, heading: 0, snapped: null, headingHistory: [] }, });
                 app.gpxTrack.setAttribute('d', ''); app.userPath.setAttribute('d', ''); app.marker.style.visibility = 'hidden';
                 updateDashboard(0, 0, 0); app.timeValue.textContent = '00:00:00'; app.trackBtn.disabled = true; app.saveBtn.disabled = true;
                 if (fullReset) { app.updateIntervalSelect.value = '5000'; state.settings.updateInterval = 5000; showModal('alert', '초기화가 완료되었습니다.'); }
@@ -474,7 +484,13 @@
 
                 checkGpsPermission(); document.body.addEventListener('click', handleAction); document.body.addEventListener('dblclick', handleDoubleClick);
                 app.menuOverlay.addEventListener('click', toggleMenu); app.gpxFileInput.addEventListener('change', handleGpxFile);
-                app.updateIntervalSelect.onchange = (e) => { state.settings.updateInterval = parseInt(e.target.value, 10); if (state.tracking.isActive) { stopTracking(); startTracking(); } };
+                app.updateIntervalSelect.onchange = (e) => {
+                    state.settings.updateInterval = parseInt(e.target.value, 10);
+                    if (state.tracking.isActive) {
+                        clearTimeout(state.tracking.gpsTimeoutId);
+                        updatePosition();
+                    }
+                };
                 if (window.DeviceOrientationEvent) window.addEventListener('deviceorientation', handleDeviceOrientation, true);
                 app.modal.onclick = (e) => { if (e.target.classList.contains('modal-close-btn') || e.target === app.modal) hideModal(); };
                 app.mapSvg.addEventListener('pointerdown', (e) => { state.map.panning.isDown = true; state.map.panning.startX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX; state.map.panning.startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY; state.map.panning.vbX = state.map.viewBox.x; state.map.panning.vbY = state.map.viewBox.y; });
