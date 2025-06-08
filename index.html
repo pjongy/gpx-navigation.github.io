@@ -154,7 +154,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v19'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v20'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -524,56 +524,76 @@
             };
             
             const updateMap = () => {
-                let positionToDisplay, positionForCentering;
-
+                // Determine the point to display (interpolated or actual)
+                let positionToDisplay;
                 if (state.interpolation.timerId && state.position.interpolated) {
                     positionToDisplay = state.position.interpolated;
-                    positionForCentering = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
                 } else if (state.tracking.isOffRoute && state.position.current) {
                     const { latitude, longitude } = state.position.current.coords;
-                    const proj = projectPoint(latitude, longitude);
-                    positionToDisplay = proj;
-                    positionForCentering = proj;
+                    positionToDisplay = projectPoint(latitude, longitude);
                 } else if (state.position.snapped.point) {
-                    const snappedProjected = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
-                    positionToDisplay = snappedProjected;
-                    positionForCentering = snappedProjected;
+                    positionToDisplay = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
                 } else {
-                    return;
+                    return; // No position to show yet
                 }
 
+                // Determine the point for centering the map (always the non-interpolated, snapped point)
+                let positionForCentering;
+                if (state.tracking.isOffRoute && state.position.current) {
+                    const { latitude, longitude } = state.position.current.coords;
+                    positionForCentering = projectPoint(latitude, longitude);
+                } else if (state.position.snapped.point) {
+                    positionForCentering = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
+                } else {
+                    positionForCentering = positionToDisplay; // Fallback
+                }
+                
+                // --- Show and scale marker ---
                 if (app.marker.getAttribute('visibility') === 'hidden') {
                     app.marker.setAttribute('visibility', 'visible');
                     if (state.gpx.points.length > 0) setZoom(2);
                 }
-
                 const desiredMarkerSvgHeight = CONSTANTS.TARGET_MARKER_REAL_WORLD_HEIGHT_M / state.gpx.metersPerUnit;
                 const scaleFactor = desiredMarkerSvgHeight / CONSTANTS.ORIGINAL_MARKER_SVG_HEIGHT;
                 const p1_scaled = `0,${-60 * scaleFactor}`; const p2_scaled = `${45 * scaleFactor},${60 * scaleFactor}`; const p3_scaled = `${-45 * scaleFactor},${60 * scaleFactor}`;
                 app.marker.setAttribute('points', `${p1_scaled} ${p2_scaled} ${p3_scaled}`);
                 
+                // --- Calculate transforms ---
                 const vb = state.map.viewBox;
                 let mapGroupTransform = '';
-                const markerTransform = `translate(${positionToDisplay.x}, ${positionToDisplay.y}) rotate(0)`;
+                let markerTransform = '';
 
-                if(state.map.isCentered) {
+                // TODO: Add rotation logic based on travel direction, not just compass
+                const markerRotation = state.map.mode === 'head-up' ? 0 : state.position.heading;
+
+                if (state.map.isCentered) {
                     const screenMarkerX = vb.x + vb.width * 0.5;
                     const screenMarkerY = vb.y + vb.height * 0.8;
                     
+                    // Marker is fixed at the screen reference point
+                    markerTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${markerRotation})`;
+                    
+                    // Map moves underneath the marker
                     if (state.map.mode === 'head-up') {
-                        const rotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
-                        mapGroupTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${rotation}) translate(${-positionForCentering.x}, ${-positionForCentering.y})`;
-                    } else {
+                        const mapRotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
+                        mapGroupTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${mapRotation}) translate(${-positionForCentering.x}, ${-positionForCentering.y})`;
+                    } else { // north-up
                         mapGroupTransform = `translate(${screenMarkerX - positionForCentering.x}, ${screenMarkerY - positionForCentering.y})`;
                     }
-                } else {
-                     if (state.map.mode === 'head-up') {
-                        const centerX = vb.x + vb.width / 2; const centerY = vb.y + vb.height / 2;
-                        const rotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
-                        mapGroupTransform = `rotate(${rotation}, ${centerX}, ${centerY})`;
+                } else { // Not centered (i.e., user has panned the map)
+                    // Marker moves to its actual position on the panned map
+                    markerTransform = `translate(${positionToDisplay.x}, ${positionToDisplay.y}) rotate(${markerRotation})`;
+                    
+                    // Map group may rotate in head-up mode, but does not translate
+                    if (state.map.mode === 'head-up') {
+                        const centerX = vb.x + vb.width / 2;
+                        const centerY = vb.y + vb.height / 2;
+                        const mapRotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
+                        mapGroupTransform = `rotate(${mapRotation}, ${centerX}, ${centerY})`;
                     }
                 }
 
+                // Apply the calculated transforms
                 app.marker.setAttribute('transform', markerTransform);
                 app.mapGroup.setAttribute('transform', mapGroupTransform);
                 updateScaleBar();
@@ -610,6 +630,7 @@
             // --- Interpolation Functions ---
             const startInterpolation = () => {
                 stopInterpolation();
+                // 사용자의 요청에 따라, 부드러운 애니메이션(60fps) 대신 1초 주기로 보간을 실행합니다.
                 state.interpolation.timerId = setInterval(interpolationLoop, 1000); // 1-second interval
             };
             const stopInterpolation = () => {
