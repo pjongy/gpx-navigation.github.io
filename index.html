@@ -1908,7 +1908,7 @@
             state.settings.invertCompass = true;
             app.updateIntervalSelect.value = "15000";
             app.compassIntervalSelect.value = "0";
-            app.invertCompassToggle.checked = false;
+            app.invertCompassToggle.checked = true;
             setLanguage(defaultLang);
             showModal("alert", "resetSuccess");
           }
@@ -1942,6 +1942,7 @@
         const init = () => {
           const userLang = navigator.language.startsWith("ko") ? "ko" : "en";
           setLanguage(userLang);
+          app.invertCompassToggle.checked = true;
           checkGpsPermission();
           handleOrientationChange();
           window.addEventListener("orientationchange", handleOrientationChange);
