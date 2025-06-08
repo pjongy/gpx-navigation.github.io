@@ -154,7 +154,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v20'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v21'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -168,7 +168,7 @@
             const state = {
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
                 tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousSnap: null, isOffRoute: false },
-                position: { current: null, heading: 0, snapped: { point: null, index: -1 }, headingHistory: [], lastCompassUpdate: 0, interpolated: null },
+                position: { current: null, heading: 0, snapped: { point: null, index: -1 }, headingHistory: [], lastCompassUpdate: 0, interpolated: null, lastSpeed: 0 },
                 map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2, panning: { isDown: false, startX: 0, startY: 0, vbX: 0, vbY: 0 } },
                 screen: { orientation: 0 },
                 settings: { updateInterval: 15000, compassInterval: 0, language: 'ko', invertCompass: false }, 
@@ -410,7 +410,7 @@
             
             const onGpsSuccess = (position) => {
                 state.position.current = position;
-                const { latitude, longitude, speed } = position.coords;
+                const { latitude, longitude } = position.coords;
                 const closest = findClosestPointOnGpx({ lat: latitude, lon: longitude });
                 state.position.snapped = { point: closest.point, index: closest.index };
 
@@ -421,9 +421,18 @@
                 const newProjectedPoint = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
 
                 if (state.tracking.previousSnap) {
-                    state.tracking.totalDistance += haversineDistance(state.tracking.previousSnap.point, state.position.snapped.point);
+                    const distanceMoved = haversineDistance(state.tracking.previousSnap.point, state.position.snapped.point);
+                    state.tracking.totalDistance += distanceMoved;
                     
-                    stopInterpolation(); // Stop previous interpolation loop
+                    stopInterpolation();
+                    
+                    const timeElapsedSeconds = (Date.now() - state.interpolation.lastGpsUpdateTime) / 1000;
+                    if (timeElapsedSeconds > 0) {
+                        const speedMps = (distanceMoved * 1000) / timeElapsedSeconds;
+                        state.position.lastSpeed = speedMps * 3.6; // km/h
+                    } else {
+                        state.position.lastSpeed = 0;
+                    }
                     
                     const pathSegmentGeo = getPathSegmentGeo(state.tracking.previousSnap, state.position.snapped);
                     state.interpolation.pathSegment = pathSegmentGeo.map(p => projectPoint(p.lat, p.lon));
@@ -437,20 +446,21 @@
                         state.interpolation.travelledDistanceMeters += Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
                     }
                     
-                    state.interpolation.lastGpsUpdateTime = Date.now();
                     state.interpolation.intervalDurationSeconds = state.settings.updateInterval / 1000;
 
                     if (state.interpolation.intervalDurationSeconds > 1 && state.interpolation.travelledDistanceMeters > 0) {
                         startInterpolation();
                     }
                 }
+                
+                state.interpolation.lastGpsUpdateTime = Date.now();
 
                 const userPathD = app.userPath.getAttribute('d') || '';
                 app.userPath.setAttribute('d', `${userPathD}${userPathD ? 'L' : 'M'}${newProjectedPoint.x},${newProjectedPoint.y}`);
                 
                 state.tracking.previousSnap = state.position.snapped;
 
-                updateDashboard(speed, state.tracking.totalDistance, state.tracking.elapsedTime);
+                updateDashboard(state.position.lastSpeed, state.tracking.totalDistance, state.tracking.elapsedTime);
                 
                 if (!state.interpolation.timerId) {
                     updateMap();
@@ -488,7 +498,7 @@
             };
 
             const updateDashboard = (speed, distance, time) => {
-                app.speedValue.textContent = speed ? (speed * 3.6).toFixed(1) : '0.0';
+                app.speedValue.textContent = (speed || 0).toFixed(1);
                 app.distanceValue.textContent = distance.toFixed(2);
                 app.avgSpeedValue.textContent = (time > 0) ? (distance / (time / 3600)).toFixed(1) : '0.0';
             };
@@ -740,7 +750,7 @@
                 if (state.tracking.isActive) stopTracking();
 
                 Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousSnap: null, isOffRoute: false });
-                Object.assign(state.position, { current: null, heading: 0, snapped: { point: null, index: -1 }, headingHistory: [], lastCompassUpdate: 0, interpolated: null });
+                Object.assign(state.position, { current: null, heading: 0, snapped: { point: null, index: -1 }, headingHistory: [], lastCompassUpdate: 0, interpolated: null, lastSpeed: 0 });
                 Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 });
                 stopInterpolation();
 
