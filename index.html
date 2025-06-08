@@ -60,7 +60,7 @@
         #gpx-track, #user-path { fill: none; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
         #gpx-track { stroke: var(--gpx-track-color); stroke-width: 3px; }
         #user-path { stroke: var(--user-path-color); stroke-width: 5px; }
-        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; vector-effect: non-scaling-stroke; transform-origin: center; transition: transform 0.2s linear; pointer-events: none; }
+        #current-pos-marker { fill: var(--marker-color); stroke: var(--bg-color); stroke-width: 1.5px; vector-effect: non-scaling-stroke; transform-origin: center; pointer-events: none; }
         .map-controls-wrapper { position: absolute; bottom: 15px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
         #left-controls { left: 15px; } #right-controls { right: 15px; }
         #top-right-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 10px; z-index: 10; align-items: center; }
@@ -154,7 +154,7 @@
     <script>
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v18'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+            const swScript = `const CACHE_NAME = 'gps-voyager-cache-v19'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
             navigator.serviceWorker.register(URL.createObjectURL(new Blob([swScript], {type: 'application/javascript'})));
         }
 
@@ -167,19 +167,22 @@
 
             const state = {
                 gpx: { points: [], bounds: null, metersPerUnit: 1 },
-                tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false },
-                position: { current: null, heading: 0, snapped: null, headingHistory: [], lastCompassUpdate: 0 },
-                map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 },
+                tracking: { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousSnap: null, isOffRoute: false },
+                position: { current: null, heading: 0, snapped: { point: null, index: -1 }, headingHistory: [], lastCompassUpdate: 0, interpolated: null },
+                map: { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2, panning: { isDown: false, startX: 0, startY: 0, vbX: 0, vbY: 0 } },
                 screen: { orientation: 0 },
-                settings: { updateInterval: 15000, compassInterval: 0, language: 'ko', invertCompass: false }, permissions: { gps: 'prompt' }, wakeLock: null,
+                settings: { updateInterval: 15000, compassInterval: 0, language: 'ko', invertCompass: false }, 
+                permissions: { gps: 'prompt' }, 
+                wakeLock: null,
+                interpolation: { timerId: null, lastGpsUpdateTime: 0, pathSegment: [], travelledDistanceMeters: 0, intervalDurationSeconds: 0, startPoint: null, endPoint: null }
             };
 
             const CONSTANTS = { 
                 EARTH_RADIUS_KM: 6371, 
                 HEADING_SMOOTHING_SAMPLES: 5, 
                 ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, 'fit'],
-                TARGET_MARKER_REAL_WORLD_HEIGHT_M: 10, // Desired real-world height of the marker in meters
-                ORIGINAL_MARKER_SVG_HEIGHT: 120 // Original height of the marker polygon in SVG units (60 - (-60))
+                TARGET_MARKER_REAL_WORLD_HEIGHT_M: 10,
+                ORIGINAL_MARKER_SVG_HEIGHT: 120 
             };
             
             const i18n = {
@@ -317,12 +320,16 @@
                 return CONSTANTS.EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             };
             const findClosestPointOnGpx = (p) => {
-                let closestPoint = null, minDistance = Infinity;
+                let closestPoint = null, minDistance = Infinity, closestIndex = -1;
                 for (let i = 0; i < state.gpx.points.length - 1; i++) {
                     const { point, distance } = findClosestPointOnSegment(p, state.gpx.points[i], state.gpx.points[i+1]);
-                    if (distance < minDistance) { minDistance = distance; closestPoint = point; }
+                    if (distance < minDistance) { 
+                        minDistance = distance; 
+                        closestPoint = point;
+                        closestIndex = i;
+                    }
                 }
-                return { point: closestPoint || state.gpx.points[0], distance: minDistance };
+                return { point: closestPoint || state.gpx.points[0], distance: minDistance, index: closestIndex };
             };
             const findClosestPointOnSegment = (p, a, b) => {
                 const ap = { x: p.lon - a.lon, y: p.lat - a.lat }, ab = { x: b.lon - a.lon, y: b.lat - a.lat };
@@ -383,6 +390,7 @@
                 app.retryWakelockBtn.style.display = 'none';
                 clearTimeout(state.tracking.gpsTimeoutId);
                 clearInterval(state.tracking.timerId);
+                stopInterpolation(); // Stop interpolation timer
                 state.tracking.gpsTimeoutId = state.tracking.timerId = null;
                 app.saveBtn.disabled = !state.tracking.startTime;
                 if(state.wakeLock) {
@@ -399,28 +407,58 @@
                 if (!state.tracking.isActive) return;
                 navigator.geolocation.getCurrentPosition(onGpsSuccess, onGpsError, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
             };
+            
             const onGpsSuccess = (position) => {
                 state.position.current = position;
                 const { latitude, longitude, speed } = position.coords;
                 const closest = findClosestPointOnGpx({ lat: latitude, lon: longitude });
-                state.position.snapped = closest.point;
+                state.position.snapped = { point: closest.point, index: closest.index };
 
                 const offRouteDistance = haversineDistance({ lat: latitude, lon: longitude }, closest.point);
                 state.tracking.isOffRoute = offRouteDistance > 0.1; 
                 app.offRouteWarning.style.display = state.tracking.isOffRoute ? 'block' : 'none';
 
-                if (state.tracking.previousPoint) {
-                    state.tracking.totalDistance += haversineDistance(state.tracking.previousPoint, state.position.snapped);
+                const newProjectedPoint = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
+
+                if (state.tracking.previousSnap) {
+                    state.tracking.totalDistance += haversineDistance(state.tracking.previousSnap.point, state.position.snapped.point);
+                    
+                    stopInterpolation(); // Stop previous interpolation loop
+                    
+                    const pathSegmentGeo = getPathSegmentGeo(state.tracking.previousSnap, state.position.snapped);
+                    state.interpolation.pathSegment = pathSegmentGeo.map(p => projectPoint(p.lat, p.lon));
+                    state.interpolation.startPoint = state.interpolation.pathSegment[0];
+                    state.interpolation.endPoint = state.interpolation.pathSegment[state.interpolation.pathSegment.length-1];
+
+                    state.interpolation.travelledDistanceMeters = 0;
+                    for (let i = 0; i < state.interpolation.pathSegment.length - 1; i++) {
+                        const p1 = state.interpolation.pathSegment[i];
+                        const p2 = state.interpolation.pathSegment[i+1];
+                        state.interpolation.travelledDistanceMeters += Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+                    }
+                    
+                    state.interpolation.lastGpsUpdateTime = Date.now();
+                    state.interpolation.intervalDurationSeconds = state.settings.updateInterval / 1000;
+
+                    if (state.interpolation.intervalDurationSeconds > 1 && state.interpolation.travelledDistanceMeters > 0) {
+                        startInterpolation();
+                    }
                 }
-                state.tracking.previousPoint = state.position.snapped;
+
                 const userPathD = app.userPath.getAttribute('d') || '';
-                const projected = projectPoint(state.position.snapped.lat, state.position.snapped.lon);
-                app.userPath.setAttribute('d', `${userPathD}${userPathD ? 'L' : 'M'}${projected.x},${projected.y}`);
+                app.userPath.setAttribute('d', `${userPathD}${userPathD ? 'L' : 'M'}${newProjectedPoint.x},${newProjectedPoint.y}`);
+                
+                state.tracking.previousSnap = state.position.snapped;
 
                 updateDashboard(speed, state.tracking.totalDistance, state.tracking.elapsedTime);
-                updateMap();
+                
+                if (!state.interpolation.timerId) {
+                    updateMap();
+                }
+                
                 scheduleNextPositionUpdate();
             };
+
             const onGpsError = (error) => {
                 showModal('error', 'gpsError');
                 scheduleNextPositionUpdate();
@@ -432,31 +470,21 @@
 
             const handleDeviceOrientation = (e) => {
                 if (state.map.mode !== 'head-up') return;
-
                 const now = Date.now();
-                if (state.settings.compassInterval > 0 && now - state.position.lastCompassUpdate < state.settings.compassInterval) {
-                    return;
-                }
+                if (state.settings.compassInterval > 0 && now - state.position.lastCompassUpdate < state.settings.compassInterval) return;
                 state.position.lastCompassUpdate = now;
-
                 let rawHeading = e.webkitCompassHeading || e.alpha;
                 if (typeof rawHeading !== 'number' || isNaN(rawHeading)) return;
-
                 let correctedHeading = (rawHeading - state.screen.orientation);
-                
                 state.position.headingHistory.push(correctedHeading);
-                if (state.position.headingHistory.length > CONSTANTS.HEADING_SMOOTHING_SAMPLES) {
-                    state.position.headingHistory.shift();
-                }
+                if (state.position.headingHistory.length > CONSTANTS.HEADING_SMOOTHING_SAMPLES) state.position.headingHistory.shift();
                 const sinSum = state.position.headingHistory.reduce((sum, h) => sum + Math.sin(toRad(h)), 0);
                 const cosSum = state.position.headingHistory.reduce((sum, h) => sum + Math.cos(toRad(h)), 0);
                 const avgRad = Math.atan2(sinSum, cosSum);
                 let avgDeg = avgRad * 180 / Math.PI;
                 if (avgDeg < 0) avgDeg += 360;
                 state.position.heading = avgDeg;
-                if (state.position.snapped || state.position.current) {
-                    updateMap();
-                }
+                if (state.position.snapped.point || state.position.current) updateMap();
             };
 
             const updateDashboard = (speed, distance, time) => {
@@ -475,93 +503,78 @@
             
             const updateScaleBar = () => {
                 if (state.gpx.points.length === 0 || !state.gpx.metersPerUnit || CONSTANTS.ZOOM_SCALES[state.map.zoomLevel] === 'fit') {
-                    app.scaleContainer.style.opacity = '0';
-                    return;
+                    app.scaleContainer.style.opacity = '0'; return;
                 }
                 app.scaleContainer.style.opacity = '1';
-
                 const viewWidthInMeters = state.map.viewBox.width * state.gpx.metersPerUnit;
                 const mapPixelWidth = app.mapSvg.getBoundingClientRect().width;
-
                 if (mapPixelWidth <= 0) return;
-
                 const pixelsPerMeter = mapPixelWidth / viewWidthInMeters;
-
                 let idealDistanceMeters = 80 / pixelsPerMeter; 
                 const magnitude = Math.pow(10, Math.floor(Math.log10(idealDistanceMeters)));
                 const residual = idealDistanceMeters / magnitude;
-
                 let niceDistance;
                 if (residual < 1.5) niceDistance = 1 * magnitude;
                 else if (residual < 3.5) niceDistance = 2 * magnitude;
                 else if (residual < 7.5) niceDistance = 5 * magnitude;
                 else niceDistance = 10 * magnitude;
-                
                 const barWidthPixels = niceDistance * pixelsPerMeter;
-
                 app.scaleBar.style.width = `${barWidthPixels}px`;
                 app.scaleLabel.textContent = niceDistance >= 1000 ? `${niceDistance / 1000} km` : `${Math.round(niceDistance)} m`;
             };
             
             const updateMap = () => {
-                const positionToProject = state.tracking.isOffRoute 
-                    ? (state.position.current ? { lat: state.position.current.coords.latitude, lon: state.position.current.coords.longitude } : null) 
-                    : state.position.snapped;
-                if (!positionToProject) return;
+                let positionToDisplay, positionForCentering;
 
-                const projected = projectPoint(positionToProject.lat, positionToProject.lon);
-                
-                // Show marker once a valid position is available
-                // --- Marker size adjustment start ---
-                // Calculate the desired SVG height for the marker based on real-world meters per SVG unit
-                const desiredMarkerSvgHeight = CONSTANTS.TARGET_MARKER_REAL_WORLD_HEIGHT_M / state.gpx.metersPerUnit;
+                if (state.interpolation.timerId && state.position.interpolated) {
+                    positionToDisplay = state.position.interpolated;
+                    positionForCentering = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
+                } else if (state.tracking.isOffRoute && state.position.current) {
+                    const { latitude, longitude } = state.position.current.coords;
+                    const proj = projectPoint(latitude, longitude);
+                    positionToDisplay = proj;
+                    positionForCentering = proj;
+                } else if (state.position.snapped.point) {
+                    const snappedProjected = projectPoint(state.position.snapped.point.lat, state.position.snapped.point.lon);
+                    positionToDisplay = snappedProjected;
+                    positionForCentering = snappedProjected;
+                } else {
+                    return;
+                }
 
-                // Calculate the scaling factor for the marker's original dimensions
-                const scaleFactor = desiredMarkerSvgHeight / CONSTANTS.ORIGINAL_MARKER_SVG_HEIGHT;
-
-                // Recalculate scaled points for the polygon. Original points: 0,-60 45,60 -45,60
-                const p1_scaled = `0,${-60 * scaleFactor}`;
-                const p2_scaled = `${45 * scaleFactor},${60 * scaleFactor}`;
-                const p3_scaled = `${-45 * scaleFactor},${60 * scaleFactor}`;
-                app.marker.setAttribute('points', `${p1_scaled} ${p2_scaled} ${p3_scaled}`);
-                // --- Marker size adjustment end ---
-
-                // Show marker once a valid position is available
                 if (app.marker.getAttribute('visibility') === 'hidden') {
                     app.marker.setAttribute('visibility', 'visible');
                     if (state.gpx.points.length > 0) setZoom(2);
                 }
 
-                const vb = state.map.viewBox;
-                const screenMarkerX = vb.x + vb.width * 0.5;
-                const screenMarkerY = vb.y + vb.height * 0.8; 
+                const desiredMarkerSvgHeight = CONSTANTS.TARGET_MARKER_REAL_WORLD_HEIGHT_M / state.gpx.metersPerUnit;
+                const scaleFactor = desiredMarkerSvgHeight / CONSTANTS.ORIGINAL_MARKER_SVG_HEIGHT;
+                const p1_scaled = `0,${-60 * scaleFactor}`; const p2_scaled = `${45 * scaleFactor},${60 * scaleFactor}`; const p3_scaled = `${-45 * scaleFactor},${60 * scaleFactor}`;
+                app.marker.setAttribute('points', `${p1_scaled} ${p2_scaled} ${p3_scaled}`);
                 
+                const vb = state.map.viewBox;
                 let mapGroupTransform = '';
-                let finalMarkerX, finalMarkerY;
+                const markerTransform = `translate(${positionToDisplay.x}, ${positionToDisplay.y}) rotate(0)`;
 
-                if (state.map.isCentered) {
-                    finalMarkerX = screenMarkerX;
-                    finalMarkerY = screenMarkerY;
-
+                if(state.map.isCentered) {
+                    const screenMarkerX = vb.x + vb.width * 0.5;
+                    const screenMarkerY = vb.y + vb.height * 0.8;
+                    
                     if (state.map.mode === 'head-up') {
                         const rotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
-                        mapGroupTransform = `translate(${finalMarkerX}, ${finalMarkerY}) rotate(${rotation}) translate(${-projected.x}, ${-projected.y})`;
-                    } else { 
-                        mapGroupTransform = `translate(${finalMarkerX - projected.x}, ${finalMarkerY - projected.y})`;
+                        mapGroupTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${rotation}) translate(${-positionForCentering.x}, ${-positionForCentering.y})`;
+                    } else {
+                        mapGroupTransform = `translate(${screenMarkerX - positionForCentering.x}, ${screenMarkerY - positionForCentering.y})`;
                     }
-                } else { 
-                    finalMarkerX = projected.x;
-                    finalMarkerY = projected.y;
-
-                    if (state.map.mode === 'head-up') {
-                        const centerX = vb.x + vb.width / 2;
-                        const centerY = vb.y + vb.height / 2;
+                } else {
+                     if (state.map.mode === 'head-up') {
+                        const centerX = vb.x + vb.width / 2; const centerY = vb.y + vb.height / 2;
                         const rotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
                         mapGroupTransform = `rotate(${rotation}, ${centerX}, ${centerY})`;
                     }
                 }
-                
-                app.marker.setAttribute('transform', `translate(${finalMarkerX}, ${finalMarkerY}) rotate(0)`);
+
+                app.marker.setAttribute('transform', markerTransform);
                 app.mapGroup.setAttribute('transform', mapGroupTransform);
                 updateScaleBar();
             };
@@ -569,42 +582,85 @@
             const setZoom = (levelOrMode) => {
                 if (state.gpx.points.length === 0) return;
                 let newLevel;
-
-                if (levelOrMode === 'in') {
-                    newLevel = Math.max(0, state.map.zoomLevel - 1);
-                } else if (levelOrMode === 'out') {
-                    newLevel = Math.min(CONSTANTS.ZOOM_SCALES.length - 2, state.map.zoomLevel + 1); // Exclude 'fit'
-                } else if (levelOrMode === 'fit') {
-                    newLevel = CONSTANTS.ZOOM_SCALES.length - 1;
-                } else if (typeof levelOrMode === 'number') {
-                    newLevel = levelOrMode;
-                } else {
-                    newLevel = state.map.zoomLevel;
-                }
-                
+                if (levelOrMode === 'in') newLevel = Math.max(0, state.map.zoomLevel - 1);
+                else if (levelOrMode === 'out') newLevel = Math.min(CONSTANTS.ZOOM_SCALES.length - 2, state.map.zoomLevel + 1);
+                else if (levelOrMode === 'fit') newLevel = CONSTANTS.ZOOM_SCALES.length - 1;
+                else if (typeof levelOrMode === 'number') newLevel = levelOrMode;
+                else newLevel = state.map.zoomLevel;
                 if (newLevel === state.map.zoomLevel && typeof levelOrMode !== 'number' && levelOrMode !== 'fit') return;
-                
                 state.map.zoomLevel = newLevel;
-
-                const vb = state.map.viewBox;
-                const scaleTarget = CONSTANTS.ZOOM_SCALES[newLevel];
-                const ratio = app.mapSvg.clientHeight / app.mapSvg.clientWidth || 1;
-                
-                if(scaleTarget === 'fit'){
+                const vb = state.map.viewBox; const ratio = app.mapSvg.clientHeight / app.mapSvg.clientWidth || 1;
+                if(CONSTANTS.ZOOM_SCALES[newLevel] === 'fit'){
                     const pathBounds = app.gpxTrack.getBBox();
                     if(pathBounds.width > 0 && pathBounds.height > 0) {
                         vb.x = pathBounds.x - pathBounds.width * 0.05; vb.y = pathBounds.y - pathBounds.height * 0.05;
                         vb.width = pathBounds.width * 1.1; vb.height = pathBounds.height * 1.1;
                     }
                 } else {
-                    const centerPoint = state.tracking.isOffRoute ? (state.position.current ? state.position.current.coords : state.gpx.points[0]) : (state.position.snapped || state.gpx.points[0]);
+                    const centerPoint = (state.tracking.isOffRoute && state.position.current) ? state.position.current.coords : (state.position.snapped.point || state.gpx.points[0]);
                     const center = projectPoint(centerPoint.lat, centerPoint.lon);
-                    const newWidthProjected = scaleTarget / state.gpx.metersPerUnit;
+                    const newWidthProjected = CONSTANTS.ZOOM_SCALES[newLevel] / state.gpx.metersPerUnit;
                     vb.width = newWidthProjected; vb.height = newWidthProjected * ratio;
                     vb.x = center.x - vb.width / 2; vb.y = center.y - vb.height / 2;
                 }
                 app.mapSvg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
                 updateMap();
+            };
+            
+            // --- Interpolation Functions ---
+            const startInterpolation = () => {
+                stopInterpolation();
+                state.interpolation.timerId = setInterval(interpolationLoop, 1000); // 1-second interval
+            };
+            const stopInterpolation = () => {
+                if (state.interpolation.timerId) {
+                    clearInterval(state.interpolation.timerId);
+                    state.interpolation.timerId = null;
+                }
+            };
+            const interpolationLoop = () => {
+                const elapsedSinceUpdate = (Date.now() - state.interpolation.lastGpsUpdateTime) / 1000;
+                if (elapsedSinceUpdate >= state.interpolation.intervalDurationSeconds) {
+                    stopInterpolation();
+                    state.position.interpolated = state.interpolation.endPoint;
+                    updateMap();
+                    return;
+                }
+                const progress = elapsedSinceUpdate / state.interpolation.intervalDurationSeconds;
+                const distanceToTravel = state.interpolation.travelledDistanceMeters * progress;
+                let cumulativeDistance = 0;
+                let interpolatedPoint = state.interpolation.startPoint;
+                for (let i = 0; i < state.interpolation.pathSegment.length - 1; i++) {
+                    const segmentStart = state.interpolation.pathSegment[i];
+                    const segmentEnd = state.interpolation.pathSegment[i+1];
+                    const segmentLength = Math.sqrt(Math.pow(segmentEnd.x - segmentStart.x, 2) + Math.pow(segmentEnd.y - segmentStart.y, 2));
+                    if (cumulativeDistance + segmentLength >= distanceToTravel) {
+                        const distanceIntoSegment = distanceToTravel - cumulativeDistance;
+                        const fractionOfSegment = segmentLength === 0 ? 0 : distanceIntoSegment / segmentLength;
+                        interpolatedPoint = {
+                            x: segmentStart.x + (segmentEnd.x - segmentStart.x) * fractionOfSegment,
+                            y: segmentStart.y + (segmentEnd.y - segmentStart.y) * fractionOfSegment
+                        };
+                        break;
+                    }
+                    cumulativeDistance += segmentLength;
+                }
+                state.position.interpolated = interpolatedPoint;
+                updateMap();
+            };
+            const getPathSegmentGeo = (startSnap, endSnap) => {
+                let startIndex = startSnap.index;
+                let endIndex = endSnap.index;
+                if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
+                    return [startSnap.point, endSnap.point];
+                }
+                const gpxSlice = state.gpx.points.slice(startIndex, endIndex + 2);
+                if (gpxSlice.length < 2) {
+                     return [startSnap.point, endSnap.point];
+                }
+                const intermediatePoints = gpxSlice.slice(1, -1);
+                const path = [startSnap.point, ...intermediatePoints, endSnap.point];
+                return path.filter((p, i) => i === 0 || p.lat !== path[i-1].lat || p.lon !== path[i-1].lon);
             };
 
             const toggleMenu = () => { app.menuPanel.classList.toggle('open'); app.menuOverlay.classList.toggle('open'); };
@@ -621,31 +677,18 @@
                     case 'gps-test': navigator.geolocation.getCurrentPosition( p => showModal('gpsTestSuccess', `Lat: ${p.coords.latitude.toFixed(5)}<br>Lon: ${p.coords.longitude.toFixed(5)}`), onGpsError ); break;
                     case 'reset-all': showModal('warning', 'resetConfirm', [{ textKey: 'cancelBtn' }, { textKey: 'resetConfirmBtn', class: 'modal-confirm-btn', onClick: () => resetData(true) }]); break;
                     case 'retry-wakelock': requestWakeLock(true); break;
-                    case 'center-map': 
-                        state.map.isCentered = true; 
-                        app.centerMapBtn.classList.add('active'); 
-                        updateMap(); 
-                        break;
+                    case 'center-map': state.map.isCentered = true; app.centerMapBtn.classList.add('active'); updateMap(); break;
                     case 'toggle-map-mode':
                         state.map.mode = state.map.mode === 'north-up' ? 'head-up' : 'north-up';
                         app.mapModeBtn.classList.toggle('active', state.map.mode === 'head-up');
-                        if (state.map.mode === 'head-up' && !state.map.isCentered) {
-                            state.map.isCentered = true; app.centerMapBtn.classList.add('active');
-                        }
-                        if(state.position.snapped || state.position.current) updateMap();
+                        if (state.map.mode === 'head-up' && !state.map.isCentered) { state.map.isCentered = true; app.centerMapBtn.classList.add('active'); }
+                        if(state.position.snapped.point || state.position.current) updateMap();
                         break;
                     case 'zoom-in': setZoom('in'); break;
                     case 'zoom-out': setZoom('out'); break;
-                    case 'zoom-reset': 
-                        state.map.isCentered = true; 
-                        app.centerMapBtn.classList.add('active'); 
-                        setZoom(2); // 200m
-                        break;
+                    case 'zoom-reset': state.map.isCentered = true; app.centerMapBtn.classList.add('active'); setZoom(2); break;
                     case 'zoom-fit':
-                        if (state.map.mode === 'head-up') {
-                            state.map.mode = 'north-up';
-                            app.mapModeBtn.classList.remove('active');
-                        }
+                        if (state.map.mode === 'head-up') { state.map.mode = 'north-up'; app.mapModeBtn.classList.remove('active'); }
                         setZoom('fit');
                         break;
                     case 'toggle-fullscreen': document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(err => console.error(err)); break;
@@ -659,12 +702,9 @@
                 const currentY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
                 if (p.isDown) {
                     state.map.isCentered = false; app.centerMapBtn.classList.remove('active');
-                    if (state.map.mode !== 'head-up') {
-                        app.mapGroup.setAttribute('transform', '');
-                    }
+                    if (state.map.mode !== 'head-up') app.mapGroup.setAttribute('transform', '');
                     const scale = app.mapSvg.clientWidth / state.map.viewBox.width;
-                    const dx = (currentX - p.startX) / scale;
-                    const dy = (currentY - p.startY) / scale;
+                    const dx = (currentX - p.startX) / scale; const dy = (currentY - p.startY) / scale;
                     state.map.viewBox.x = p.vbX - dx; state.map.viewBox.y = p.vbY - dy;
                     app.mapSvg.setAttribute('viewBox', `${state.map.viewBox.x} ${state.map.viewBox.y} ${state.map.viewBox.width} ${state.map.viewBox.height}`);
                     updateMap();
@@ -672,51 +712,34 @@
             };
             const handleDoubleClick = (e) => {
                 if(e.target.closest('#info-panel')) $('[data-action="toggle-fullscreen"]').click();
-                if(e.target.closest('#map-container')) {
-                     $('[data-action="center-map"]').click();
-                     $('[data-action="zoom-reset"]').click();
-                }
+                if(e.target.closest('#map-container')) { $('[data-action="center-map"]').click(); $('[data-action="zoom-reset"]').click(); }
             };
 
             const resetData = (fullReset) => {
                 if (state.tracking.isActive) stopTracking();
 
-                Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousPoint: null, isOffRoute: false });
-                Object.assign(state.position, { current: null, heading: 0, snapped: null, headingHistory: [], lastCompassUpdate: 0 });
+                Object.assign(state.tracking, { isActive: false, startTime: null, gpsTimeoutId: null, timerId: null, totalDistance: 0, elapsedTime: 0, previousSnap: null, isOffRoute: false });
+                Object.assign(state.position, { current: null, heading: 0, snapped: { point: null, index: -1 }, headingHistory: [], lastCompassUpdate: 0, interpolated: null });
                 Object.assign(state.map, { mode: 'north-up', isCentered: true, viewBox: { x: 0, y: 0, width: 1000, height: 1000 }, zoomLevel: 2 });
+                stopInterpolation();
 
                 app.userPath.setAttribute('d', '');
                 app.marker.setAttribute('visibility', 'hidden');
                 app.offRouteWarning.style.display = 'none';
-                updateDashboard(0, 0, 0);
-                app.timeValue.textContent = '00:00:00';
-                
-                app.saveBtn.disabled = true;
-                app.mapModeBtn.classList.remove('active');
-                app.centerMapBtn.classList.add('active');
-                app.trackBtn.style.backgroundColor = '';
-                app.retryWakelockBtn.style.display = 'none';
-                
-                app.mapGroup.setAttribute('transform', '');
+                updateDashboard(0, 0, 0); app.timeValue.textContent = '00:00:00';
+                app.saveBtn.disabled = true; app.mapModeBtn.classList.remove('active');
+                app.centerMapBtn.classList.add('active'); app.trackBtn.style.backgroundColor = '';
+                app.retryWakelockBtn.style.display = 'none'; app.mapGroup.setAttribute('transform', '');
                 app.mapSvg.setAttribute('viewBox', '0 0 1000 1000');
                 
                 if (fullReset) {
                     Object.assign(state.gpx, { points: [], bounds: null, metersPerUnit: 1 });
-                    app.gpxTrack.setAttribute('d', '');
-                    app.trackBtn.disabled = true;
-                    app.gpxFileInput.value = '';
-
+                    app.gpxTrack.setAttribute('d', ''); app.trackBtn.disabled = true; app.gpxFileInput.value = '';
                     const defaultLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
-                    state.settings.language = defaultLang;
-                    state.settings.updateInterval = 15000;
-                    state.settings.compassInterval = 0;
-                    state.settings.invertCompass = false;
-                    
-                    app.updateIntervalSelect.value = '15000';
-                    app.compassIntervalSelect.value = '0';
-                    app.invertCompassToggle.checked = false;
-                    setLanguage(defaultLang); 
-
+                    state.settings.language = defaultLang; state.settings.updateInterval = 15000;
+                    state.settings.compassInterval = 0; state.settings.invertCompass = false;
+                    app.updateIntervalSelect.value = '15000'; app.compassIntervalSelect.value = '0';
+                    app.invertCompassToggle.checked = false; setLanguage(defaultLang); 
                     showModal('alert', 'resetSuccess');
                 }
                 updateScaleBar();
@@ -730,64 +753,38 @@
                     avgSpeedKmh: (state.tracking.elapsedTime > 0) ? (state.tracking.totalDistance / (state.tracking.elapsedTime / 3600)) : 0,
                 };
                 const blob = new Blob([JSON.stringify(journeyData, null, 2)], { type: 'application/json' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `journey_summary_${Date.now()}.json`;
-                a.click();
-                URL.revokeObjectURL(a.href);
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                a.download = `journey_summary_${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
             };
 
             const init = () => {
                 const userLang = navigator.language.startsWith('ko') ? 'ko' : 'en';
-                state.settings.language = userLang;
-                setLanguage(userLang);
-
-                checkGpsPermission();
-                handleOrientationChange();
+                setLanguage(userLang); checkGpsPermission(); handleOrientationChange();
                 window.addEventListener('orientationchange', handleOrientationChange);
-
                 let resizeTimeout;
-                window.addEventListener('resize', () => {
-                    clearTimeout(resizeTimeout);
-                    resizeTimeout = setTimeout(updateScaleBar, 100);
-                });
-
-
+                window.addEventListener('resize', () => { clearTimeout(resizeTimeout); resizeTimeout = setTimeout(updateScaleBar, 100); });
                 document.body.addEventListener('click', handleAction);
                 document.body.addEventListener('dblclick', handleDoubleClick);
                 app.menuOverlay.addEventListener('click', toggleMenu);
                 app.gpxFileInput.addEventListener('change', handleGpxFile);
                 app.updateIntervalSelect.onchange = (e) => {
                     state.settings.updateInterval = parseInt(e.target.value, 10);
-                    if (state.tracking.isActive) {
-                        clearTimeout(state.tracking.gpsTimeoutId);
-                        updatePosition();
-                    }
+                    if (state.tracking.isActive) { clearTimeout(state.tracking.gpsTimeoutId); updatePosition(); }
                 };
-                app.compassIntervalSelect.onchange = (e) => {
-                    state.settings.compassInterval = parseInt(e.target.value, 10);
-                };
-                app.invertCompassToggle.addEventListener('change', (e) => {
-                    state.settings.invertCompass = e.target.checked;
-                    if(state.map.mode === 'head-up') updateMap();
-                });
-                
+                app.compassIntervalSelect.onchange = (e) => state.settings.compassInterval = parseInt(e.target.value, 10);
+                app.invertCompassToggle.addEventListener('change', (e) => { state.settings.invertCompass = e.target.checked; if(state.map.mode === 'head-up') updateMap(); });
                 const orientationEvent = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
                 if (window.DeviceOrientationEvent) window.addEventListener(orientationEvent, handleDeviceOrientation, true);
-                
                 app.modal.onclick = (e) => { if (e.target.classList.contains('modal-close-btn') || e.target === app.modal) hideModal(); };
                 app.mapSvg.addEventListener('pointerdown', (e) => {
                     if (e.button !== 0) return;
-                    state.map.panning.isDown = true;
-                    state.map.panning.startX = e.clientX; state.map.panning.startY = e.clientY;
+                    state.map.panning.isDown = true; state.map.panning.startX = e.clientX; state.map.panning.startY = e.clientY;
                     state.map.panning.vbX = state.map.viewBox.x; state.map.panning.vbY = state.map.viewBox.y;
                 });
                 app.mapSvg.addEventListener('pointermove', handleMapPan);
                 window.addEventListener('pointerup', () => state.map.panning.isDown = false);
                 app.langToggle.addEventListener('change', (e) => setLanguage(e.target.checked ? 'en' : 'ko'));
-                app.trackBtn.disabled = true;
-                app.retryWakelockBtn.style.display = 'none';
-                updateScaleBar();
+                app.trackBtn.disabled = true; app.retryWakelockBtn.style.display = 'none'; updateScaleBar();
             };
             
             init();
