@@ -1828,20 +1828,23 @@
             !startSnap.point ||
             !endSnap.point ||
             startSnap.index === -1 ||
-            endSnap.index === -1 ||
-            startSnap.index > endSnap.index
+            endSnap.index === -1
           ) {
             return [startSnap.point, endSnap.point].filter(Boolean);
           }
 
-          if (startSnap.index === endSnap.index) {
-            return [startSnap.point, endSnap.point];
+          const path = [startSnap.point];
+
+          if (startSnap.index < endSnap.index) { // Forward
+            for (let i = startSnap.index + 1; i <= endSnap.index; i++) {
+              path.push(state.gpx.points[i]);
+            }
+          } else if (startSnap.index > endSnap.index) { // Backward
+            for (let i = startSnap.index; i > endSnap.index; i--) {
+                path.push(state.gpx.points[i]);
+            }
           }
 
-          const path = [startSnap.point];
-          for (let i = startSnap.index + 1; i <= endSnap.index; i++) {
-            path.push(state.gpx.points[i]);
-          }
           path.push(endSnap.point);
 
           return path.filter((p, i) => {
