@@ -1352,6 +1352,7 @@
 
               if (isLongInterval && isSignificantMove && !state.tracking.isOffRoute) {
                 const predictedNextSnap = findPointAlongGpxPath(
+                  state.tracking.previousSnap,
                   state.position.snapped,
                   distanceMoved,
                 );
@@ -1444,7 +1445,10 @@
             lat: latitude,
             lon: longitude,
           });
-          const distMeters = haversineDistance(state.position.current.coords, closestCoordOnGpx.point) * 1000;
+          const distMeters = haversineDistance(
+            { lat: latitude, lon: longitude },
+            closestCoordOnGpx.point,
+          ) * 1000;
           app.offRouteDistance.textContent = distMeters >= 1000 ? `${(distMeters / 1000).toFixed(1)} km` : `${distMeters.toFixed(0)} m`;
           
           const arrowRotation = -state.position.heading;
@@ -1673,61 +1677,90 @@
           updateMap();
         };
 
-        function findPointAlongGpxPath(startSnap, distanceKm) {
-          if (!startSnap || distanceKm <= 0) return null;
+        function findPointAlongGpxPath(previousSnap, currentSnap, distanceKm) {
+            if (!previousSnap || !currentSnap || !currentSnap.point || distanceKm <= 0) return null;
 
-          let distanceToTravelKm = distanceKm;
+            let direction = 1; // 1 for forward, -1 for backward
 
-          const currentSegmentEnd = state.gpx.points[startSnap.index + 1];
-          if (!currentSegmentEnd) return startSnap; 
-
-          let remainingOnSegmentKm = haversineDistance(
-            startSnap.point,
-            currentSegmentEnd,
-          );
-
-          if (distanceToTravelKm <= remainingOnSegmentKm) {
-            const fraction = remainingOnSegmentKm > 0 ? distanceToTravelKm / remainingOnSegmentKm : 0;
-            const newLat =
-              startSnap.point.lat +
-              (currentSegmentEnd.lat - startSnap.point.lat) * fraction;
-            const newLon =
-              startSnap.point.lon +
-              (currentSegmentEnd.lon - startSnap.point.lon) * fraction;
-            return {
-              point: { lat: newLat, lon: newLon },
-              index: startSnap.index,
-            };
-          }
-
-          distanceToTravelKm -= remainingOnSegmentKm;
-
-          for (
-            let i = startSnap.index + 1;
-            i < state.gpx.points.length - 1;
-            i++
-          ) {
-            const segmentStart = state.gpx.points[i];
-            const segmentEnd = state.gpx.points[i + 1];
-            const segmentLengthKm = haversineDistance(segmentStart, segmentEnd);
-
-            if (distanceToTravelKm <= segmentLengthKm) {
-              const fraction = segmentLengthKm > 0 ? distanceToTravelKm / segmentLengthKm : 0;
-              const newLat =
-                segmentStart.lat +
-                (segmentEnd.lat - segmentStart.lat) * fraction;
-              const newLon =
-                segmentStart.lon +
-                (segmentEnd.lon - segmentStart.lon) * fraction;
-              return { point: { lat: newLat, lon: newLon }, index: i };
+            if (previousSnap.point && previousSnap.index !== -1) {
+                if (currentSnap.index > previousSnap.index) {
+                    direction = 1;
+                } else if (currentSnap.index < previousSnap.index) {
+                    direction = -1;
+                } else { // Same segment
+                    const segmentStart = state.gpx.points[currentSnap.index];
+                    const distToPrev = haversineDistance(segmentStart, previousSnap.point);
+                    const distToCurr = haversineDistance(segmentStart, currentSnap.point);
+                    if (distToCurr < distToPrev) {
+                        direction = -1;
+                    }
+                }
             }
-            distanceToTravelKm -= segmentLengthKm;
-          }
 
-          return {
-            point: state.gpx.points[state.gpx.points.length - 1],
-            index: state.gpx.points.length - 2,
-          };
+            let distanceToTravelKm = distanceKm;
+            let startIndex = currentSnap.index;
+            let startPoint = currentSnap.point;
+
+            if (direction === 1) { // Forward
+                const currentSegmentEnd = state.gpx.points[startIndex + 1];
+                if (!currentSegmentEnd) return currentSnap;
+
+                let remainingOnSegmentKm = haversineDistance(startPoint, currentSegmentEnd);
+
+                if (distanceToTravelKm <= remainingOnSegmentKm) {
+                    const fraction = remainingOnSegmentKm > 0 ? distanceToTravelKm / remainingOnSegmentKm : 0;
+                    const newLat = startPoint.lat + (currentSegmentEnd.lat - startPoint.lat) * fraction;
+                    const newLon = startPoint.lon + (currentSegmentEnd.lon - startPoint.lon) * fraction;
+                    return { point: { lat: newLat, lon: newLon }, index: startIndex };
+                }
+
+                distanceToTravelKm -= remainingOnSegmentKm;
+
+                for (let i = startIndex + 1; i < state.gpx.points.length - 1; i++) {
+                    const segmentStart = state.gpx.points[i];
+                    const segmentEnd = state.gpx.points[i + 1];
+                    const segmentLengthKm = haversineDistance(segmentStart, segmentEnd);
+
+                    if (distanceToTravelKm <= segmentLengthKm) {
+                        const fraction = segmentLengthKm > 0 ? distanceToTravelKm / segmentLengthKm : 0;
+                        const newLat = segmentStart.lat + (segmentEnd.lat - segmentStart.lat) * fraction;
+                        const newLon = segmentStart.lon + (segmentEnd.lon - segmentStart.lon) * fraction;
+                        return { point: { lat: newLat, lon: newLon }, index: i };
+                    }
+                    distanceToTravelKm -= segmentLengthKm;
+                }
+                return { point: state.gpx.points[state.gpx.points.length - 1], index: state.gpx.points.length - 2 };
+
+            } else { // Backward (direction === -1)
+                const currentSegmentStart = state.gpx.points[startIndex];
+                if (!currentSegmentStart) return currentSnap;
+
+                let remainingOnSegmentKm = haversineDistance(startPoint, currentSegmentStart);
+
+                if (distanceToTravelKm <= remainingOnSegmentKm) {
+                    const fraction = remainingOnSegmentKm > 0 ? distanceToTravelKm / remainingOnSegmentKm : 0;
+                    const newLat = startPoint.lat - (startPoint.lat - currentSegmentStart.lat) * fraction;
+                    const newLon = startPoint.lon - (startPoint.lon - currentSegmentStart.lon) * fraction;
+                    return { point: { lat: newLat, lon: newLon }, index: startIndex };
+                }
+
+                distanceToTravelKm -= remainingOnSegmentKm;
+
+                for (let i = startIndex - 1; i >= 0; i--) {
+                    const segmentStart = state.gpx.points[i];
+                    const segmentEnd = state.gpx.points[i+1];
+                    const segmentLengthKm = haversineDistance(segmentStart, segmentEnd);
+
+                    if (distanceToTravelKm <= segmentLengthKm) {
+                        const fraction = segmentLengthKm > 0 ? distanceToTravelKm / segmentLengthKm : 0;
+                        const newLat = segmentEnd.lat - (segmentEnd.lat - segmentStart.lat) * fraction;
+                        const newLon = segmentEnd.lon - (segmentEnd.lon - segmentStart.lon) * fraction;
+                        return { point: { lat: newLat, lon: newLon }, index: i };
+                    }
+                    distanceToTravelKm -= segmentLengthKm;
+                }
+                return { point: state.gpx.points[0], index: 0 };
+            }
         }
 
         const startInterpolation = () => {
