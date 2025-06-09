@@ -185,15 +185,14 @@
       #map-svg:active {
         cursor: grabbing;
       }
-      #gpx-track,
+      #gpx-track-container path,
       #user-path {
         fill: none;
         stroke-linejoin: round;
         stroke-linecap: round;
         vector-effect: non-scaling-stroke;
       }
-      #gpx-track {
-        stroke: var(--gpx-track-color);
+      #gpx-track-container path {
         stroke-width: 3px;
       }
       #user-path {
@@ -204,6 +203,14 @@
         fill: var(--marker-color);
         stroke: var(--bg-color);
         stroke-width: 1.5px;
+        vector-effect: non-scaling-stroke;
+        transform-origin: center;
+        pointer-events: none;
+      }
+      #off-route-arrow {
+        fill: rgba(255, 0, 0, 0.8);
+        stroke: white;
+        stroke-width: 2px;
         vector-effect: non-scaling-stroke;
         transform-origin: center;
         pointer-events: none;
@@ -566,7 +573,8 @@
         </div>
         <svg id="map-svg">
           <g id="map-group">
-            <path id="gpx-track"></path>
+            <!-- Container for GPX track segments -->
+            <g id="gpx-track-container"></g>
             <path id="user-path"></path>
           </g>
           <polygon
@@ -574,6 +582,11 @@
             points="0,-60 45,60 -45,60"
             visibility="hidden"
           ></polygon>
+          <path
+            id="off-route-arrow"
+            d="M0,-80 L40,20 L10,20 L10,80 L-10,80 L-10,20 L-40,20 Z"
+            visibility="hidden"
+          ></path>
         </svg>
         <div id="top-right-controls">
           <div id="scale-container">
@@ -754,7 +767,7 @@
     <script>
       // Service Worker Registration
       if ("serviceWorker" in navigator) {
-        const swScript = `const CACHE_NAME = 'gps-voyager-cache-v26'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+        const swScript = `const CACHE_NAME = 'gps-voyager-cache-v28'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
         navigator.serviceWorker.register(
           URL.createObjectURL(
             new Blob([swScript], { type: "application/javascript" }),
@@ -776,9 +789,10 @@
           timeValue: $("#time-value"),
           mapSvg: $("#map-svg"),
           mapGroup: $("#map-group"),
-          gpxTrack: $("#gpx-track"),
+          gpxTrackContainer: $("#gpx-track-container"),
           userPath: $("#user-path"),
           marker: $("#current-pos-marker"),
+          offRouteArrow: $("#off-route-arrow"), // Off-route arrow element
           trackBtn: $('[data-action="toggle-tracking"]'),
           mapModeBtn: $('[data-action="toggle-map-mode"]'),
           centerMapBtn: $('[data-action="center-map"]'),
@@ -991,6 +1005,7 @@
           reader.readAsText(file);
           toggleMenu();
         };
+
         const parseGpx = (gpxString) => {
           const parser = new DOMParser();
           const xmlDoc = parser.parseFromString(gpxString, "application/xml");
@@ -1000,6 +1015,7 @@
           state.gpx.points = Array.from(trkpts).map((pt) => ({
             lat: parseFloat(pt.getAttribute("lat")),
             lon: parseFloat(pt.getAttribute("lon")),
+            ele: parseFloat(pt.querySelector("ele")?.textContent || 0),
           }));
           calculateGpxBounds();
           projectAndRenderGpx();
@@ -1034,40 +1050,46 @@
               : ((maxMercN - mercN) / (maxMercN - minMercN)) * mapSize;
           return { x, y };
         };
-        const projectAndRenderGpx = () => {
-          if (state.gpx.points.length === 0) return;
-          const pathData = state.gpx.points
-            .map(
-              (p, i) =>
-                `${i === 0 ? "M" : "L"}${projectPoint(p.lat, p.lon).x},${projectPoint(p.lat, p.lon).y}`,
-            )
-            .join(" ");
-          app.gpxTrack.setAttribute("d", pathData);
-          let totalDistanceMeters = 0;
-          for (let i = 0; i < state.gpx.points.length - 1; i++) {
-            totalDistanceMeters +=
-              haversineDistance(state.gpx.points[i], state.gpx.points[i + 1]) *
-              1000;
-          }
 
-          let projectedDist = 0;
-          for (let i = 0; i < state.gpx.points.length - 1; i++) {
-            const p1 = projectPoint(
-              state.gpx.points[i].lat,
-              state.gpx.points[i].lon,
-            );
-            const p2 = projectPoint(
-              state.gpx.points[i + 1].lat,
-              state.gpx.points[i + 1].lon,
-            );
-            projectedDist += Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-          }
-
-          state.gpx.metersPerUnit =
-            projectedDist > 0 ? totalDistanceMeters / projectedDist : 1;
-          setZoom("fit");
+        const getGradientColor = (gradient) => {
+            if (gradient > 10) return "#FF0000"; // Red
+            if (gradient > 6) return "#FFA500"; // Orange
+            if (gradient > 1) return "#FFFF00"; // Yellow
+            if (gradient >= -1) return "#FFFFFF"; // White
+            if (gradient >= -4) return "#ADD8E6"; // Light Blue
+            if (gradient >= -8) return "#4169E1"; // Royal Blue
+            return "#00008B"; // Dark Blue
         };
+
+        const projectAndRenderGpx = () => {
+            if (state.gpx.points.length < 2) return;
+            app.gpxTrackContainer.innerHTML = '';
+            let totalDistanceMeters = 0;
+            let projectedDist = 0;
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < state.gpx.points.length - 1; i++) {
+                const p1 = state.gpx.points[i];
+                const p2 = state.gpx.points[i + 1];
+                const p1_proj = projectPoint(p1.lat, p1.lon);
+                const p2_proj = projectPoint(p2.lat, p2.lon);
+                const elevationChange = p2.ele - p1.ele;
+                const horizontalDistance = haversineDistance(p1, p2) * 1000;
+                totalDistanceMeters += horizontalDistance;
+                projectedDist += Math.sqrt((p2_proj.x - p1_proj.x) ** 2 + (p2_proj.y - p1_proj.y) ** 2);
+                const gradient = horizontalDistance > 0 ? (elevationChange / horizontalDistance) * 100 : 0;
+                const color = getGradientColor(gradient);
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${p1_proj.x} ${p1_proj.y} L ${p2_proj.x} ${p2_proj.y}`);
+                path.setAttribute('stroke', color);
+                fragment.appendChild(path);
+            }
+            app.gpxTrackContainer.appendChild(fragment);
+            state.gpx.metersPerUnit = projectedDist > 0 ? totalDistanceMeters / projectedDist : 1;
+            setZoom("fit");
+        };
+
         const haversineDistance = (p1, p2) => {
+          if (!p1 || !p2) return 0;
           const dLat = toRad(p2.lat - p1.lat),
             dLon = toRad(p2.lon - p1.lon);
           const a =
@@ -1081,6 +1103,60 @@
             Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
           );
         };
+        
+        const calculateBearing = (p1, p2) => {
+            const dLon = toRad(p2.lon - p1.lon);
+            const lat1 = toRad(p1.lat);
+            const lat2 = toRad(p2.lat);
+            const y = Math.sin(dLon) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+            let brng = (Math.atan2(y, x) * 180) / Math.PI;
+            brng = (brng + 360) % 360; // normalize to 0-360
+            return brng;
+        };
+
+        /**
+         * Calculates the distance along the GPX track between two snapped points.
+         * @param {object} startSnap - The starting snapped point {point, index}.
+         * @param {object} endSnap - The ending snapped point {point, index}.
+         * @returns {number} The distance in kilometers along the GPX path.
+         */
+        const getDistanceAlongGpxPath = (startSnap, endSnap) => {
+          if (!startSnap || !endSnap || !startSnap.point || !endSnap.point || startSnap.index < 0 || endSnap.index < 0) {
+            return 0;
+          }
+
+          if (startSnap.index > endSnap.index) {
+            return haversineDistance(startSnap.point, endSnap.point);
+          }
+          
+          if (startSnap.index === endSnap.index) {
+            return haversineDistance(startSnap.point, endSnap.point);
+          }
+
+          let distance = 0;
+
+          const startSegmentEnd = state.gpx.points[startSnap.index + 1];
+          if (startSegmentEnd) {
+             distance += haversineDistance(startSnap.point, startSegmentEnd);
+          }
+
+          for (let i = startSnap.index + 1; i < endSnap.index; i++) {
+            const p1 = state.gpx.points[i];
+            const p2 = state.gpx.points[i + 1];
+            if (p1 && p2) {
+              distance += haversineDistance(p1, p2);
+            }
+          }
+
+          const endSegmentStart = state.gpx.points[endSnap.index];
+          if(endSegmentStart) {
+            distance += haversineDistance(endSegmentStart, endSnap.point);
+          }
+          
+          return distance;
+        };
+
         const findClosestPointOnGpx = (p) => {
           let closestPoint = null,
             minDistance = Infinity,
@@ -1111,7 +1187,7 @@
               ? 0
               : (ap.x * ab.x + ap.y * ab.y) / (ab.x ** 2 + ab.y ** 2);
           t = Math.max(0, Math.min(1, t));
-          const closest = { lat: a.lat + ab.y * t, lon: a.lon + ab.x * t };
+          const closest = { lat: a.lat + ab.y * t, lon: a.lon + ab.x * t, ele: a.ele + (b.ele - a.ele) * t };
           return { point: closest, distance: haversineDistance(p, closest) };
         };
 
@@ -1173,7 +1249,7 @@
           app.retryWakelockBtn.style.display = "none";
           clearTimeout(state.tracking.gpsTimeoutId);
           clearInterval(state.tracking.timerId);
-          stopInterpolation(); // Stop interpolation timer
+          stopInterpolation(); 
           state.tracking.gpsTimeoutId = state.tracking.timerId = null;
           app.saveBtn.disabled = !state.tracking.startTime;
           if (state.wakeLock) {
@@ -1199,122 +1275,156 @@
         };
 
         const onGpsSuccess = (position) => {
-          const now = performance.now();
-          state.position.current = position;
-          const { latitude, longitude } = position.coords;
-          const closest = findClosestPointOnGpx({
-            lat: latitude,
-            lon: longitude,
-          });
-          state.position.snapped = {
-            point: closest.point,
-            index: closest.index,
-          };
+          try {
+            const now = performance.now();
 
-          const offRouteDistance = haversineDistance(
-            { lat: latitude, lon: longitude },
-            closest.point,
-          );
-          state.tracking.isOffRoute = offRouteDistance > 0.1;
-          app.offRouteWarning.style.display = state.tracking.isOffRoute
-            ? "block"
-            : "none";
-
-          stopInterpolation();
-
-          if (
-            state.tracking.previousSnap &&
-            state.tracking.previousSnap.point
-          ) {
-            const distanceMoved = haversineDistance(
-              state.tracking.previousSnap.point,
-              state.position.snapped.point,
-            );
-            state.tracking.totalDistance += distanceMoved;
-
-            const timeElapsedSeconds =
-              (now - state.interpolation.lastGpsUpdateTime) / 1000;
-
-            if (timeElapsedSeconds > 0) {
-              const speedMps = (distanceMoved * 1000) / timeElapsedSeconds;
-              state.position.lastSpeed = speedMps * 3.6;
-            } else {
-              state.position.lastSpeed = 0;
+            // BUG FIX: Sanity check for GPS jumps
+            if (state.position.current) {
+                const lastPos = { lat: state.position.current.coords.latitude, lon: state.position.current.coords.longitude };
+                const newPos = { lat: position.coords.latitude, lon: position.coords.longitude };
+                const jumpDistance = haversineDistance(lastPos, newPos); // km
+                const timeElapsed = (now - state.interpolation.lastGpsUpdateTime) / 1000; // seconds
+                
+                if(timeElapsed > 0) {
+                    const jumpSpeed = (jumpDistance / timeElapsed) * 3600; // km/h
+                    // If speed is unrealistic (e.g., > 500 km/h), it's likely a GPS error.
+                    if (jumpSpeed > 500) {
+                        console.warn(`GPS jump detected. Speed: ${jumpSpeed.toFixed(0)} km/h. Ignoring this update for interpolation.`);
+                        
+                        // Update current position but skip complex logic
+                        state.position.current = position;
+                        const closest = findClosestPointOnGpx({ lat: newPos.lat, lon: newPos.lon });
+                        state.position.snapped = { point: closest.point, index: closest.index };
+                        
+                        // Reset previous snap to the new, sane position to prevent further issues.
+                        state.tracking.previousSnap = state.position.snapped; 
+                        state.interpolation.lastGpsUpdateTime = now;
+                        
+                        updateMap();
+                        scheduleNextPositionUpdate();
+                        return; // Exit function early
+                    }
+                }
             }
+            
+            state.position.current = position;
+            const { latitude, longitude } = position.coords;
+            const closest = findClosestPointOnGpx({
+              lat: latitude,
+              lon: longitude,
+            });
+            state.position.snapped = {
+              point: closest.point,
+              index: closest.index,
+            };
 
-            const isSignificantMove =
-              distanceMoved > CONSTANTS.INTERPOLATION_DISTANCE_THRESHOLD_KM;
-            const isLongInterval = timeElapsedSeconds > 1;
+            const offRouteDistance = haversineDistance(
+              { lat: latitude, lon: longitude },
+              closest.point,
+            );
+            state.tracking.isOffRoute = offRouteDistance > 0.1;
+            app.offRouteWarning.style.display = state.tracking.isOffRoute
+              ? "block"
+              : "none";
 
-            if (isLongInterval && isSignificantMove) {
-              const predictedNextSnap = findPointAlongGpxPath(
+            stopInterpolation();
+
+            if (
+              state.tracking.previousSnap &&
+              state.tracking.previousSnap.point
+            ) {
+              const distanceMoved = getDistanceAlongGpxPath(
+                state.tracking.previousSnap,
                 state.position.snapped,
-                distanceMoved,
               );
+              state.tracking.totalDistance += distanceMoved;
 
-              if (predictedNextSnap) {
-                state.interpolation.intervalDurationSeconds =
-                  timeElapsedSeconds;
-                const pathSegmentGeo = getPathSegmentGeo(
+              const timeElapsedSeconds =
+                (now - state.interpolation.lastGpsUpdateTime) / 1000;
+
+              if (timeElapsedSeconds > 0) {
+                const speedMps = (distanceMoved * 1000) / timeElapsedSeconds;
+                state.position.lastSpeed = speedMps * 3.6;
+              } else {
+                state.position.lastSpeed = 0;
+              }
+
+              const isSignificantMove =
+                distanceMoved > CONSTANTS.INTERPOLATION_DISTANCE_THRESHOLD_KM;
+              const isLongInterval = timeElapsedSeconds > 1;
+
+              if (isLongInterval && isSignificantMove) {
+                const predictedNextSnap = findPointAlongGpxPath(
                   state.position.snapped,
-                  predictedNextSnap,
-                );
-                state.interpolation.pathSegment = pathSegmentGeo.map((p) =>
-                  projectPoint(p.lat, p.lon),
+                  distanceMoved,
                 );
 
-                if (state.interpolation.pathSegment.length > 0) {
-                  state.interpolation.startPoint = projectPoint(
-                    state.position.snapped.point.lat,
-                    state.position.snapped.point.lon,
+                if (predictedNextSnap) {
+                  state.interpolation.intervalDurationSeconds =
+                    timeElapsedSeconds;
+                  const pathSegmentGeo = getPathSegmentGeo(
+                    state.position.snapped,
+                    predictedNextSnap,
                   );
-                  state.interpolation.endPoint = projectPoint(
-                    predictedNextSnap.point.lat,
-                    predictedNextSnap.point.lon,
+                  state.interpolation.pathSegment = pathSegmentGeo.map((p) =>
+                    projectPoint(p.lat, p.lon),
                   );
 
-                  state.interpolation.travelledDistanceMeters = 0;
-                  for (
-                    let i = 0;
-                    i < state.interpolation.pathSegment.length - 1;
-                    i++
-                  ) {
-                    const p1 = state.interpolation.pathSegment[i];
-                    const p2 = state.interpolation.pathSegment[i + 1];
-                    state.interpolation.travelledDistanceMeters += Math.sqrt(
-                      Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
+                  if (state.interpolation.pathSegment.length > 0) {
+                    state.interpolation.startPoint = projectPoint(
+                      state.position.snapped.point.lat,
+                      state.position.snapped.point.lon,
                     );
-                  }
+                    state.interpolation.endPoint = projectPoint(
+                      predictedNextSnap.point.lat,
+                      predictedNextSnap.point.lon,
+                    );
 
-                  if (state.interpolation.travelledDistanceMeters > 0) {
-                    startInterpolation();
+                    state.interpolation.travelledDistanceMeters = 0;
+                    for (
+                      let i = 0;
+                      i < state.interpolation.pathSegment.length - 1;
+                      i++
+                    ) {
+                      const p1 = state.interpolation.pathSegment[i];
+                      const p2 = state.interpolation.pathSegment[i + 1];
+                      state.interpolation.travelledDistanceMeters += Math.sqrt(
+                        Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2),
+                      );
+                    }
+
+                    if (state.interpolation.travelledDistanceMeters > 0) {
+                      startInterpolation();
+                    }
                   }
                 }
               }
             }
+
+            state.interpolation.lastGpsUpdateTime = now;
+            state.tracking.previousSnap = state.position.snapped;
+
+            const newProjectedPoint = projectPoint(
+              state.position.snapped.point.lat,
+              state.position.snapped.point.lon,
+            );
+            const userPathD = app.userPath.getAttribute("d") || "";
+            app.userPath.setAttribute(
+              "d",
+              `${userPathD}${userPathD ? "L" : "M"}${newProjectedPoint.x},${newProjectedPoint.y}`,
+            );
+            updateDashboard(
+              state.position.lastSpeed,
+              state.tracking.totalDistance,
+              state.tracking.elapsedTime,
+            );
+
+            updateMap();
+          } catch(e) {
+              console.error("Error during onGpsSuccess:", e);
+          } finally {
+            scheduleNextPositionUpdate();
           }
-
-          state.interpolation.lastGpsUpdateTime = now;
-          state.tracking.previousSnap = state.position.snapped;
-
-          const newProjectedPoint = projectPoint(
-            state.position.snapped.point.lat,
-            state.position.snapped.point.lon,
-          );
-          const userPathD = app.userPath.getAttribute("d") || "";
-          app.userPath.setAttribute(
-            "d",
-            `${userPathD}${userPathD ? "L" : "M"}${newProjectedPoint.x},${newProjectedPoint.y}`,
-          );
-          updateDashboard(
-            state.position.lastSpeed,
-            state.tracking.totalDistance,
-            state.tracking.elapsedTime,
-          );
-
-          updateMap();
-
-          scheduleNextPositionUpdate();
         };
 
         const onGpsError = (error) => {
@@ -1418,98 +1528,110 @@
               ? `${niceDistance / 1000} km`
               : `${Math.round(niceDistance)} m`;
         };
-
+        
         const updateMap = () => {
-          let positionToDisplay, positionForCentering;
+          try {
+              let positionToDisplay, positionForCentering;
 
-          if (state.tracking.isOffRoute && state.position.current) {
-            const proj = projectPoint(
-              state.position.current.coords.latitude,
-              state.position.current.coords.longitude,
-            );
-            positionToDisplay = proj;
-            positionForCentering = proj;
-          } else if (
-            state.interpolation.timerId &&
-            state.position.interpolated
-          ) {
-            positionToDisplay = state.position.interpolated;
-            positionForCentering = state.position.interpolated;
-          } else if (state.position.snapped.point) {
-            const proj = projectPoint(
-              state.position.snapped.point.lat,
-              state.position.snapped.point.lon,
-            );
-            positionToDisplay = proj;
-            positionForCentering = proj;
-          } else {
-            return;
-          }
+              // 1. Determine the reference point for the map view.
+              if (state.tracking.isOffRoute && state.position.current) {
+                  const proj = projectPoint(
+                      state.position.current.coords.latitude,
+                      state.position.current.coords.longitude,
+                  );
+                  positionToDisplay = proj;
+                  positionForCentering = proj;
+              } else if (state.interpolation.timerId && state.position.interpolated) {
+                  positionToDisplay = state.position.interpolated;
+                  positionForCentering = state.position.interpolated;
+              } else if (state.position.snapped.point) {
+                  const proj = projectPoint(
+                      state.position.snapped.point.lat,
+                      state.position.snapped.point.lon,
+                  );
+                  positionToDisplay = proj;
+                  positionForCentering = proj;
+              } else {
+                  updateScaleBar();
+                  return;
+              }
 
-          // --- Show and scale marker ---
-          if (app.marker.getAttribute("visibility") === "hidden") {
-            app.marker.setAttribute("visibility", "visible");
-            if (state.gpx.points.length > 0) setZoom(2);
-          }
-          const desiredMarkerSvgHeight =
-            CONSTANTS.TARGET_MARKER_REAL_WORLD_HEIGHT_M /
-            state.gpx.metersPerUnit;
-          const scaleFactor =
-            desiredMarkerSvgHeight / CONSTANTS.ORIGINAL_MARKER_SVG_HEIGHT;
-          const p1_scaled = `0,${-60 * scaleFactor}`;
-          const p2_scaled = `${45 * scaleFactor},${60 * scaleFactor}`;
-          const p3_scaled = `${-45 * scaleFactor},${60 * scaleFactor}`;
-          app.marker.setAttribute(
-            "points",
-            `${p1_scaled} ${p2_scaled} ${p3_scaled}`,
-          );
+              const vb = state.map.viewBox;
+              let mapGroupTransform = "";
 
-          // --- Calculate transforms ---
-          const vb = state.map.viewBox;
-          let mapGroupTransform = "";
-          let markerTransform = "";
+              // 2. Handle map panning and rotation (`mapGroupTransform`)
+              if (state.map.isCentered) {
+                  const screenMarkerX = vb.x + vb.width * 0.5;
+                  const screenMarkerY = vb.y + vb.height * 0.8;
+                  if (state.map.mode === "head-up") {
+                      const mapRotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
+                      mapGroupTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${mapRotation}) translate(${-positionForCentering.x}, ${-positionForCentering.y})`;
+                  } else {
+                      mapGroupTransform = `translate(${screenMarkerX - positionForCentering.x}, ${screenMarkerY - positionForCentering.y})`;
+                  }
+              } else {
+                  if (state.map.mode === "head-up") {
+                      const centerX = vb.x + vb.width / 2;
+                      const centerY = vb.y + vb.height / 2;
+                      const mapRotation = state.settings.invertCompass ? state.position.heading : -state.position.heading;
+                      mapGroupTransform = `rotate(${mapRotation}, ${centerX}, ${centerY})`;
+                  }
+              }
+              app.mapGroup.setAttribute("transform", mapGroupTransform);
 
-          // TODO: Add rotation logic based on travel direction, not just compass
-          const markerRotation =
-            state.map.mode === "head-up" ? 0 : state.position.heading;
+              // 3. Handle the indicator (normal marker or off-route arrow)
+              if (state.tracking.isOffRoute && state.position.current) {
+                  app.marker.setAttribute("visibility", "hidden");
+                  app.offRouteArrow.setAttribute("visibility", "visible");
 
-          if (state.map.isCentered) {
-            const screenMarkerX = vb.x + vb.width * 0.5;
-            const screenMarkerY = vb.y + vb.height * 0.8;
+                  const bearingToTrack = calculateBearing(
+                      { lat: state.position.current.coords.latitude, lon: state.position.current.coords.longitude },
+                      state.position.snapped.point
+                  );
 
-            // Marker is fixed at the screen reference point
-            markerTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${markerRotation})`;
+                  let arrowRotation = bearingToTrack;
+                  if (state.map.mode === 'head-up') {
+                      arrowRotation -= state.position.heading;
+                  }
 
-            // Map moves underneath the marker
-            if (state.map.mode === "head-up") {
-              const mapRotation = state.settings.invertCompass
-                ? state.position.heading
-                : -state.position.heading;
-              mapGroupTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${mapRotation}) translate(${-positionForCentering.x}, ${-positionForCentering.y})`;
-            } else {
-              // north-up
-              mapGroupTransform = `translate(${screenMarkerX - positionForCentering.x}, ${screenMarkerY - positionForCentering.y})`;
+                  const screenCenterX = vb.x + vb.width / 2;
+                  const screenCenterY = vb.y + vb.height / 2;
+                  const arrowTransform = `translate(${screenCenterX}, ${screenCenterY}) rotate(${arrowRotation})`;
+                  app.offRouteArrow.setAttribute("transform", arrowTransform);
+
+              } else {
+                  app.marker.setAttribute("visibility", "visible");
+                  app.offRouteArrow.setAttribute("visibility", "hidden");
+
+                  if (app.marker.getAttribute("visibility") === "hidden") {
+                      if (state.gpx.points.length > 0) setZoom(2);
+                  }
+
+                  const desiredMarkerSvgHeight = CONSTANTS.TARGET_MARKER_REAL_WORLD_HEIGHT_M / state.gpx.metersPerUnit;
+                  const scaleFactor = desiredMarkerSvgHeight / CONSTANTS.ORIGINAL_MARKER_SVG_HEIGHT;
+                  const p1_scaled = `0,${-60 * scaleFactor}`;
+                  const p2_scaled = `${45 * scaleFactor},${60 * scaleFactor}`;
+                  const p3_scaled = `${-45 * scaleFactor},${60 * scaleFactor}`;
+                  app.marker.setAttribute("points", `${p1_scaled} ${p2_scaled} ${p3_scaled}`);
+
+                  const markerRotation = state.map.mode === "head-up" ? 0 : state.position.heading;
+                  let markerTransform = "";
+
+                  if (state.map.isCentered) {
+                      const screenMarkerX = vb.x + vb.width * 0.5;
+                      const screenMarkerY = vb.y + vb.height * 0.8;
+                      markerTransform = `translate(${screenMarkerX}, ${screenMarkerY}) rotate(${markerRotation})`;
+                  } else {
+                      markerTransform = `translate(${positionToDisplay.x}, ${positionToDisplay.y}) rotate(${markerRotation})`;
+                  }
+                  app.marker.setAttribute("transform", markerTransform);
+              }
+              
+              // 4. Update scale bar
+              updateScaleBar();
+            } catch(e) {
+                console.error("Error during updateMap:", e);
             }
-          } else {
-            // Not centered (i.e., user has panned the map)
-            // Marker moves to its actual position on the panned map
-            markerTransform = `translate(${positionToDisplay.x}, ${positionToDisplay.y}) rotate(${markerRotation})`;
-
-            // Map group may rotate in head-up mode, but does not translate
-            if (state.map.mode === "head-up") {
-              const centerX = vb.x + vb.width / 2;
-              const centerY = vb.y + vb.height / 2;
-              const mapRotation = state.settings.invertCompass
-                ? state.position.heading
-                : -state.position.heading;
-              mapGroupTransform = `rotate(${mapRotation}, ${centerX}, ${centerY})`;
-            }
-          }
-
-          // Apply the calculated transforms
-          app.marker.setAttribute("transform", markerTransform);
-          app.mapGroup.setAttribute("transform", mapGroupTransform);
-          updateScaleBar();
         };
 
         const setZoom = (levelOrMode) => {
@@ -1536,7 +1658,7 @@
           const vb = state.map.viewBox;
           const ratio = app.mapSvg.clientHeight / app.mapSvg.clientWidth || 1;
           if (CONSTANTS.ZOOM_SCALES[newLevel] === "fit") {
-            const pathBounds = app.gpxTrack.getBBox();
+            const pathBounds = app.gpxTrackContainer.getBBox();
             if (pathBounds.width > 0 && pathBounds.height > 0) {
               vb.x = pathBounds.x - pathBounds.width * 0.05;
               vb.y = pathBounds.y - pathBounds.height * 0.05;
@@ -1563,15 +1685,13 @@
           updateMap();
         };
 
-        // --- Extrapolation Functions ---
         function findPointAlongGpxPath(startSnap, distanceKm) {
           if (!startSnap || distanceKm <= 0) return null;
 
           let distanceToTravelKm = distanceKm;
 
-          // 1. Calculate distance remaining on the current segment
           const currentSegmentEnd = state.gpx.points[startSnap.index + 1];
-          if (!currentSegmentEnd) return startSnap; // At the end of the track
+          if (!currentSegmentEnd) return startSnap; 
 
           let remainingOnSegmentKm = haversineDistance(
             startSnap.point,
@@ -1579,8 +1699,7 @@
           );
 
           if (distanceToTravelKm <= remainingOnSegmentKm) {
-            // The predicted point is on the current segment
-            const fraction = distanceToTravelKm / remainingOnSegmentKm;
+            const fraction = remainingOnSegmentKm > 0 ? distanceToTravelKm / remainingOnSegmentKm : 0;
             const newLat =
               startSnap.point.lat +
               (currentSegmentEnd.lat - startSnap.point.lat) * fraction;
@@ -1593,7 +1712,6 @@
             };
           }
 
-          // 2. Subtract the remaining distance and move to the next segments
           distanceToTravelKm -= remainingOnSegmentKm;
 
           for (
@@ -1606,8 +1724,7 @@
             const segmentLengthKm = haversineDistance(segmentStart, segmentEnd);
 
             if (distanceToTravelKm <= segmentLengthKm) {
-              // The predicted point is on this segment
-              const fraction = distanceToTravelKm / segmentLengthKm;
+              const fraction = segmentLengthKm > 0 ? distanceToTravelKm / segmentLengthKm : 0;
               const newLat =
                 segmentStart.lat +
                 (segmentEnd.lat - segmentStart.lat) * fraction;
@@ -1619,7 +1736,6 @@
             distanceToTravelKm -= segmentLengthKm;
           }
 
-          // If distance is still left, we've reached the end of the track
           return {
             point: state.gpx.points[state.gpx.points.length - 1],
             index: state.gpx.points.length - 2,
@@ -1628,7 +1744,7 @@
 
         const startInterpolation = () => {
           stopInterpolation();
-          state.interpolation.timerId = setInterval(interpolationLoop, 1000); // 1-second interval
+          state.interpolation.timerId = setInterval(interpolationLoop, 1000); 
         };
         const stopInterpolation = () => {
           if (state.interpolation.timerId) {
@@ -1879,6 +1995,7 @@
 
           app.userPath.setAttribute("d", "");
           app.marker.setAttribute("visibility", "hidden");
+          app.offRouteArrow.setAttribute("visibility", "hidden");
           app.offRouteWarning.style.display = "none";
           updateDashboard(0, 0, 0);
           app.timeValue.textContent = "00:00:00";
@@ -1890,13 +2007,14 @@
           app.mapGroup.setAttribute("transform", "");
           app.mapSvg.setAttribute("viewBox", "0 0 1000 1000");
 
+          app.gpxTrackContainer.innerHTML = '';
+
           if (fullReset) {
             Object.assign(state.gpx, {
               points: [],
               bounds: null,
               metersPerUnit: 1,
             });
-            app.gpxTrack.setAttribute("d", "");
             app.trackBtn.disabled = true;
             app.gpxFileInput.value = "";
             const defaultLang = navigator.language.startsWith("ko")
