@@ -568,6 +568,20 @@
         margin-top: 20px;
         text-shadow: 0 0 5px black;
       }
+      /* Gradient Legend Styles */
+      .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+        font-size: 0.9em;
+      }
+      .legend-color-box {
+        width: 20px;
+        height: 20px;
+        margin-right: 10px;
+        border-radius: 4px;
+        border: 1px solid #555;
+      }
     </style>
   </head>
   <body>
@@ -790,6 +804,10 @@
           모든 데이터 초기화
         </button>
       </div>
+      <div class="menu-section" id="gradient-legend-section">
+        <h3 data-i18n="gradientLegend">경사도 범례</h3>
+        <div id="gradient-legend-container"></div>
+      </div>
     </div>
     <div id="modal">
       <div class="modal-content">
@@ -850,6 +868,7 @@
           offRouteOverlay: $("#off-route-overlay"),
           offRouteArrow: $("#off-route-arrow"),
           offRouteDistance: $("#off-route-distance"),
+          gradientLegendContainer: $("#gradient-legend-container"),
         };
 
         const state = {
@@ -908,6 +927,17 @@
           ORIGINAL_MARKER_SVG_HEIGHT: 120,
           INTERPOLATION_DISTANCE_THRESHOLD_KM: 0.001, // 1 meter
         };
+        
+        const GRADIENT_COLORS = [
+          { threshold: 15, color: "#500000", label: "15% ~", label_en: "15% ~" },
+          { threshold: 10, color: "#FF0000", label: "10 ~ 15%", label_en: "10 ~ 15%" },
+          { threshold: 6, color: "#FFA500", label: "6 ~ 10%", label_en: "6 ~ 10%" },
+          { threshold: 1, color: "#FFFF00", label: "1 ~ 6%", label_en: "1 ~ 6%" },
+          { threshold: -1, color: "#FFFFFF", label: "-1 ~ 1%", label_en: "-1 ~ 1%" },
+          { threshold: -4, color: "#ADD8E6", label: "-4 ~ -1%", label_en: "-4 ~ -1%" },
+          { threshold: -8, color: "#4169E1", label: "-8 ~ -4%", label_en: "-8 ~ -4%" },
+          { threshold: -Infinity, color: "#00008B", label: "~ -8%", label_en: "~ -8%" },
+        ];
 
         const i18n = {
           ko: {
@@ -952,6 +982,7 @@
             gpsTestSuccess: "GPS 테스트 성공",
             offRouteWarning: "경로를 이탈했습니다.",
             resetSuccess: "초기화가 완료되었습니다.",
+            gradientLegend: "경사도 범례",
           },
           en: {
             currentSpeed: "Current Speed",
@@ -995,7 +1026,30 @@
             gpsTestSuccess: "GPS Test Successful",
             offRouteWarning: "Off route.",
             resetSuccess: "Reset complete.",
+            gradientLegend: "Gradient Legend",
           },
+        };
+
+        const populateGradientLegend = (lang) => {
+            const container = app.gradientLegendContainer;
+            if (!container) return;
+            container.innerHTML = '';
+            const labelKey = lang === 'en' ? 'label_en' : 'label';
+            GRADIENT_COLORS.forEach(item => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+
+                const colorBox = document.createElement('div');
+                colorBox.className = 'legend-color-box';
+                colorBox.style.backgroundColor = item.color;
+
+                const label = document.createElement('span');
+                label.textContent = item[labelKey];
+
+                legendItem.appendChild(colorBox);
+                legendItem.appendChild(label);
+                container.appendChild(legendItem);
+            });
         };
 
         const setLanguage = (lang) => {
@@ -1009,7 +1063,9 @@
           app.trackBtn.textContent = state.tracking.isActive
             ? i18n[lang].stopTracking
             : i18n[lang].startTracking;
+          populateGradientLegend(lang);
         };
+
         const toRad = (deg) => (deg * Math.PI) / 180;
         const showModal = (titleKey, messageKey, buttons = []) => {
           const lang = state.settings.language;
@@ -1091,13 +1147,12 @@
         };
 
         const getGradientColor = (gradient) => {
-            if (gradient > 10) return "#FF0000"; // Red
-            if (gradient > 6) return "#FFA500"; // Orange
-            if (gradient > 1) return "#FFFF00"; // Yellow
-            if (gradient >= -1) return "#FFFFFF"; // White
-            if (gradient >= -4) return "#ADD8E6"; // Light Blue
-            if (gradient >= -8) return "#4169E1"; // Royal Blue
-            return "#00008B"; // Dark Blue
+            for (const item of GRADIENT_COLORS) {
+                if (gradient >= item.threshold) {
+                    return item.color;
+                }
+            }
+            return GRADIENT_COLORS[GRADIENT_COLORS.length - 1].color; // Fallback
         };
 
         const projectAndRenderGpx = () => {
