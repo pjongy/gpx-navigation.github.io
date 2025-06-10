@@ -558,7 +558,6 @@
         width: 25vmin;
         height: 25vmin;
         fill: var(--accent-color);
-        transition: transform 0.2s linear;
         transform-origin: center;
       }
       #off-route-distance {
@@ -1507,7 +1506,8 @@
           app.offRouteDistance.textContent = distMeters >= 1000 ? `${(distMeters / 1000).toFixed(1)} km` : `${distMeters.toFixed(0)} m`;
           
           const arrowRotation = -state.position.heading;
-          app.offRouteArrow.style.transform = `rotate(${arrowRotation}deg)`;
+          offRouteArrowTransform = `rotate(${arrowRotation})`;
+          app.offRouteArrow.setAttribute("transform", offRouteArrowTransform);
         }
 
         const handleDeviceOrientation = (e) => {
