@@ -217,11 +217,6 @@
         z-index: 10;
         transition: opacity 0.3s;
       }
-      #map-container.off-route-active .map-controls-wrapper[data-off-route-hideable],
-      #map-container.off-route-active #top-right-controls #scale-container {
-        opacity: 0;
-        pointer-events: none;
-      }
       #left-controls {
         left: 15px;
       }
@@ -656,7 +651,7 @@
             </svg>
           </button>
         </div>
-        <div id="left-controls" class="map-controls-wrapper" data-off-route-hideable>
+        <div id="left-controls" class="map-controls-wrapper">
           <button class="control-btn" data-action="zoom-in" title="확대">
             +</button
           ><button class="control-btn" data-action="zoom-out" title="축소">
@@ -683,7 +678,7 @@
             </svg>
           </button>
         </div>
-        <div id="right-controls" class="map-controls-wrapper" data-off-route-hideable>
+        <div id="right-controls" class="map-controls-wrapper">
           <button
             class="control-btn"
             data-action="toggle-map-mode"
@@ -1382,7 +1377,8 @@
 
             if (
               state.tracking.previousSnap &&
-              state.tracking.previousSnap.point
+              state.tracking.previousSnap.point &&
+              !state.tracking.isOffRoute
             ) {
               const distanceMoved = getDistanceAlongGpxPath(
                 state.tracking.previousSnap,
@@ -1404,7 +1400,7 @@
                 distanceMoved > CONSTANTS.INTERPOLATION_DISTANCE_THRESHOLD_KM;
               const isLongInterval = timeElapsedSeconds > 1;
 
-              if (isLongInterval && isSignificantMove && !state.tracking.isOffRoute) {
+              if (isLongInterval && isSignificantMove) {
                 const predictedNextSnap = findPointAlongGpxPath(
                   state.tracking.previousSnap,
                   state.position.snapped,
@@ -1549,7 +1545,8 @@
           
           if (state.tracking.isOffRoute) {
              updateOffRouteCompass();
-          } else if (state.position.snapped.point || state.position.current) {
+          }
+          if (state.position.snapped.point || state.position.current) {
             updateMap();
           }
         };
@@ -1614,11 +1611,10 @@
           try {
             if (state.tracking.isOffRoute) {
               app.offRouteOverlay.classList.add('visible');
-              app.mapContainer.classList.add('off-route-active');
               updateOffRouteCompass();
             } else {
               app.offRouteOverlay.classList.remove('visible');
-              app.mapContainer.classList.remove('off-route-active');
+            }
               
               let positionToDisplay, positionForCentering;
 
@@ -1677,7 +1673,6 @@
               app.marker.setAttribute("transform", markerTransform);
               app.mapGroup.setAttribute("transform", mapGroupTransform);
               updateScaleBar();
-            }
           } catch (e) {
             console.error("Error during updateMap:", e);
           }
@@ -2078,7 +2073,6 @@
           app.marker.setAttribute("visibility", "hidden");
           app.offRouteWarning.style.display = "none";
           app.offRouteOverlay.classList.remove('visible');
-          app.mapContainer.classList.remove('off-route-active');
           updateDashboard(0, 0, 0);
           app.timeValue.textContent = "00:00:00";
           app.saveBtn.disabled = true;
