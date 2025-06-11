@@ -1224,6 +1224,34 @@
           return distance;
         };
 
+        // Bearing calculation function
+        function bearing(lat1, lon1, lat2, lon2) {
+          const toRad = (deg) => deg * Math.PI / 180;
+          const toDeg = (rad) => rad * 180 / Math.PI;
+
+          const lat1Rad = toRad(lat1);
+          const lon1Rad = toRad(lon1);
+          const lat2Rad = toRad(lat2);
+          const lon2Rad = toRad(lon2);
+
+          const deltaLon = lon2Rad - lon1Rad;
+
+          const y = Math.sin(deltaLon) * Math.cos(lat2Rad);
+          const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                    Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLon);
+
+          let brng = Math.atan2(y, x);
+
+          brng = toDeg(brng);
+          if (brng < 0) brng += 360;
+
+          if (state.settings.invertCompass) {
+            return -brng
+          } else {
+            return brng
+          }
+        }
+
         const findClosestPointOnGpx = (p) => {
           let closestPoint = null,
             minDistance = Infinity,
@@ -1486,24 +1514,43 @@
             (screen.orientation && screen.orientation.angle) ||
             0;
         };
-        
+
         const updateOffRouteCompass = () => {
           if (!state.tracking.isOffRoute || !state.position.current || !state.position.snapped.point) return;
 
-          const { latitude, longitude } = state.position.current.coords;
+          const {
+            latitude,
+            longitude
+          } = state.position.current.coords;
           const closestCoordOnGpx = findClosestPointOnGpx({
             lat: latitude,
             lon: longitude,
           });
-          const distMeters = haversineDistance(
-            { lat: latitude, lon: longitude },
+          const distMeters = haversineDistance({
+            lat: latitude,
+            lon: longitude
+          },
             closestCoordOnGpx.point,
           ) * 1000;
           app.offRouteDistance.textContent = distMeters >= 1000 ? `${(distMeters / 1000).toFixed(1)} km` : `${distMeters.toFixed(0)} m`;
-          
-          const arrowRotation = -state.position.heading;
-          offRouteArrowTransform = `rotate(${arrowRotation})`;
-          app.offRouteArrow.setAttribute("transform", offRouteArrowTransform);
+
+          // --- Start of change ---
+          // Calculate the bearing from the current position to the closest point on the track
+          const bearingToTrack = bearing(
+            latitude,
+            longitude,
+            closestCoordOnGpx.point.lat,
+            closestCoordOnGpx.point.lon
+          );
+
+          // Adjust the arrow rotation based on the user's heading
+          // The arrow should point towards the track relative to the direction the user is facing
+          let arrowRotation = bearingToTrack - state.position.heading;
+          if (arrowRotation < 0) arrowRotation += 360;
+          arrowRotation = arrowRotation % 360;
+
+          const offRouteArrowTransform = `rotate(${arrowRotation}deg)`;
+          app.offRouteArrow.style.transform = offRouteArrowTransform;
         }
 
         const handleDeviceOrientation = (e) => {
