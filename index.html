@@ -228,6 +228,7 @@
         top: 15px;
         right: 15px;
         display: flex;
+        flex-direction: column;
         gap: 10px;
         z-index: 10;
         align-items: center;
@@ -520,10 +521,10 @@
         transition: opacity 0.3s;
       }
       #scale-bar {
-        height: 2px;
+        width: 2px; /* Set a fixed width for the vertical bar */
         background-color: var(--primary-text-color);
-        border-left: 2px solid var(--primary-text-color);
-        border-right: 2px solid var(--primary-text-color);
+        border-top: 2px solid var(--primary-text-color); /* Use top/bottom borders for caps */
+        border-bottom: 2px solid var(--primary-text-color);
         box-sizing: content-box;
       }
 
@@ -636,10 +637,6 @@
           경로를 이탈했습니다.
         </div>
         <div id="top-right-controls">
-          <div id="scale-container">
-            <div id="scale-label"></div>
-            <div id="scale-bar"></div>
-          </div>
           <button
             class="control-btn"
             data-action="toggle-fullscreen"
@@ -652,6 +649,10 @@
               ></path>
             </svg>
           </button>
+          <div id="scale-container">
+            <div id="scale-label"></div>
+            <div id="scale-bar"></div>
+          </div>
         </div>
         <div id="left-controls" class="map-controls-wrapper">
           <button class="control-btn" data-action="zoom-in" title="확대">
@@ -1734,8 +1735,13 @@
           else if (residual < 3.5) niceDistance = 2 * magnitude;
           else if (residual < 7.5) niceDistance = 5 * magnitude;
           else niceDistance = 10 * magnitude;
-          const barWidthPixels = niceDistance * pixelsPerMeter;
-          app.scaleBar.style.width = `${barWidthPixels}px`;
+
+          // The calculation for the length in pixels is the same,
+          // but now it will be applied to the height.
+          const barLengthPixels = niceDistance * pixelsPerMeter;
+          app.scaleBar.style.height = `${barLengthPixels}px`; // Apply to height
+          app.scaleBar.style.width = "2px"; // Keep width fixed
+
           app.scaleLabel.textContent =
             niceDistance >= 1000
               ? `${niceDistance / 1000} km`
