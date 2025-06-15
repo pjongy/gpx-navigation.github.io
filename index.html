@@ -1660,11 +1660,9 @@
 
         const handleDeviceOrientation = (e) => {
           const now = Date.now();
-          if (
-            state.settings.compassInterval > 0 &&
-            now - state.position.lastCompassUpdate <
-              state.settings.compassInterval
-          )
+          const prevLastCompassUpdate = state.position.lastCompassUpdate;
+          if (now - prevLastCompassUpdate < 0.1)
+            // heading update interval itself is 0.1 second (update map depends on compassInterval
             return;
           state.position.lastCompassUpdate = now;
 
@@ -1691,12 +1689,19 @@
           const avgRad = Math.atan2(sinSum, cosSum);
           let avgDeg = (avgRad * 180) / Math.PI;
           if (avgDeg < 0) avgDeg += 360;
+          avgDeg = avgDeg % 360;
 
           if (state.settings.invertCompass) {
             state.position.heading = -avgDeg;
           } else {
             state.position.heading = avgDeg;
           }
+
+          if (
+            state.settings.compassInterval > 0 &&
+            now - prevLastCompassUpdate < state.settings.compassInterval
+          )
+            return;
 
           if (state.tracking.isOffRoute) {
             updateOffRouteCompass();
