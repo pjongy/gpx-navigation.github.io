@@ -885,6 +885,7 @@
             heading: 0,
             snapped: { point: null, index: -1 },
             headingHistory: [],
+            speedHistory: [],
             lastCompassUpdate: 0,
             interpolated: null,
             lastSpeed: 0,
@@ -919,6 +920,7 @@
         const CONSTANTS = {
           EARTH_RADIUS_KM: 6371,
           HEADING_SMOOTHING_SAMPLES: 5,
+          SPEED_SMOOTHING_SAMPLES: 4,
           ZOOM_SCALES: [50, 100, 200, 500, 1000, 5000, "fit"],
           TARGET_MARKER_REAL_WORLD_HEIGHT_M: 10,
           ORIGINAL_MARKER_SVG_HEIGHT: 120,
@@ -1503,15 +1505,32 @@
                 state.position.lastSpeed = 0;
               }
 
+              state.position.speedHistory.push(state.position.lastSpeed);
+              if (
+                state.position.speedHistory.length >
+                CONSTANTS.SPEED_SMOOTHING_SAMPLES
+              ) {
+                state.position.speedHistory.shift();
+              }
+
               const isSignificantMove =
                 distanceMoved > CONSTANTS.INTERPOLATION_DISTANCE_THRESHOLD_KM;
               const isLongInterval = timeElapsedSeconds > 1;
 
               if (isLongInterval && isSignificantMove) {
+                const avgSpeed =
+                  state.position.speedHistory.length > 0
+                    ? state.position.speedHistory.reduce((a, b) => a + b, 0) /
+                      state.position.speedHistory.length
+                    : 0;
+
+                const predictedDistanceKm =
+                  (avgSpeed / 3600) * timeElapsedSeconds;
+
                 const predictedNextSnap = findPointAlongGpxPath(
                   state.tracking.previousSnap,
                   state.position.snapped,
-                  distanceMoved,
+                  predictedDistanceKm,
                 );
 
                 if (predictedNextSnap) {
@@ -2267,6 +2286,7 @@
             lastCompassUpdate: 0,
             interpolated: null,
             lastSpeed: 0,
+            speedHistory: [],
           });
           Object.assign(state.map, {
             mode: "north-up",
