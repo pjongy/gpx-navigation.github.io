@@ -819,7 +819,7 @@
     <script>
       // Service Worker Registration
       if ("serviceWorker" in navigator) {
-        const swScript = `const CACHE_NAME = 'gps-voyager-cache-v28'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+        const swScript = `const CACHE_NAME = 'gps-voyager-cache-v32'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
         navigator.serviceWorker.register(
           URL.createObjectURL(
             new Blob([swScript], { type: "application/javascript" }),
@@ -889,6 +889,8 @@
             lastCompassUpdate: 0,
             interpolated: null,
             lastSpeed: 0,
+            declination: 0, // Store calculated magnetic declination
+            declinationCalculated: false, // Flag to check if declination is set
           },
           map: {
             mode: "north-up",
@@ -900,7 +902,7 @@
           screen: { orientation: 0 },
           settings: {
             updateInterval: 5000,
-            compassInterval: 0.5,
+            compassInterval: 500,
             language: "ko",
             invertCompass: true,
           },
@@ -925,7 +927,74 @@
           TARGET_MARKER_REAL_WORLD_HEIGHT_M: 10,
           ORIGINAL_MARKER_SVG_HEIGHT: 120,
           INTERPOLATION_DISTANCE_THRESHOLD_KM: 0.001, // 1 meter
+          MIN_COMPASS_THROTTLE_MS: 100, // Minimum throttle for "real-time" compass
         };
+
+        // --- Magnetic Declination Logic Start ---
+        // Improved Magnetic Declination Lookup Table (approximate from WMM2025)
+        // Latitude ranges: [67.5-90], [22.5-67.5], [-22.5-22.5], [-67.5-(-22.5)], [-90-(-67.5)]
+        // Longitude ranges: -180° to 180° (36 sections, 10° interval)
+        const MAGNETIC_DECLINATION_TABLE = [
+          // High North 67.5°~90°
+          [
+            -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 90, 80,
+            70, 60, 50, 40, 30, 20, 10, 0, -10, -20, -30, -40, -50, -50, -50,
+            -50, -45, -40, -35, -35,
+          ],
+          // Mid North 22.5°~67.5°
+          [
+            15, 14, 13, 12, 11, 9, 6, 2, -2, -7, -12, -17, -20, -21, -20, -18,
+            -15, -10, -5, 2, 7, 11, 13, 12, 10, 8, 5, 2, 0, -3, -6, -8, -9, -9,
+            -7, -2,
+          ],
+          // Equatorial -22.5°~22.5°
+          [
+            8, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, -1, -2, -5, -8, -11, -14, -16,
+            -15, -13, -10, -7, -4, 0, 4, 7, 9, 10, 10, 8, 6, 5, 5, 6, 7, 8,
+          ],
+          // Mid South -67.5°~(-22.5)°
+          [
+            25, 22, 18, 12, 5, -2, -8, -14, -18, -20, -20, -18, -14, -8, 0,
+            10, 22, 35, 45, 50, 48, 42, 35, 28, 22, 18, 16, 16, 18, 21, 24,
+            26, 27, 26, 25, 25,
+          ],
+          // High South -90°~(-67.5)°
+          [
+            70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 0, -5, -10,
+            -15, -20, -25, -30, -35, -40, -45, -50, -55, -60, -65, -70, -75,
+            -80, -80, -78, -75, -72, -70,
+          ],
+        ];
+
+        const getMagneticDeclination = (lat, lon) => {
+          if (lat == null || lon == null) return 0;
+
+          // Calculate latitude index (5 zones)
+          let latIndex;
+          if (lat >= 67.5) latIndex = 0; // High North
+          else if (lat >= 22.5) latIndex = 1; // Mid North
+          else if (lat >= -22.5) latIndex = 2; // Equatorial
+          else if (lat >= -67.5) latIndex = 3; // Mid South
+          else latIndex = 4; // High South
+
+          // Calculate longitude index (36 sections: -180° to 180°, 10° interval)
+          let lonIndex = Math.floor((lon + 180) / 10);
+
+          // Handle boundary cases
+          if (lonIndex < 0) lonIndex = 0;
+          if (lonIndex >= 36) lonIndex = 35;
+
+          // Return declination from lookup table
+          if (
+            MAGNETIC_DECLINATION_TABLE[latIndex] &&
+            MAGNETIC_DECLINATION_TABLE[latIndex][lonIndex] !== undefined
+          ) {
+            return MAGNETIC_DECLINATION_TABLE[latIndex][lonIndex];
+          }
+
+          return 0; // Fallback
+        };
+        // --- Magnetic Declination Logic End ---
 
         const GRADIENT_COLORS = [
           {
@@ -1461,9 +1530,18 @@
         const onGpsSuccess = (position) => {
           try {
             const now = performance.now();
+            const { latitude, longitude } = position.coords;
+
+            // Calculate and store declination on first GPS fix
+            if (!state.position.declinationCalculated) {
+              state.position.declination = getMagneticDeclination(
+                latitude,
+                longitude,
+              );
+              state.position.declinationCalculated = true;
+            }
 
             state.position.current = position;
-            const { latitude, longitude } = position.coords;
             const closest = findClosestPointOnGpx({
               lat: latitude,
               lon: longitude,
@@ -1661,15 +1739,18 @@
         const handleDeviceOrientation = (e) => {
           const now = Date.now();
           const prevLastCompassUpdate = state.position.lastCompassUpdate;
-          if (now - prevLastCompassUpdate < 0.1)
-            // heading update interval itself is 0.1 second (update map depends on compassInterval
-            return;
+          if (now - prevLastCompassUpdate < 100) return;
           state.position.lastCompassUpdate = now;
 
-          let rawHeading = e.webkitCompassHeading || e.alpha;
-          if (typeof rawHeading !== "number" || isNaN(rawHeading)) return;
+          let magneticHeading = e.webkitCompassHeading || e.alpha;
+          if (typeof magneticHeading !== "number" || isNaN(magneticHeading))
+            return;
 
-          let correctedHeading = rawHeading - state.screen.orientation;
+          // Sub declination to magnetic heading to get true heading
+          let trueHeading = magneticHeading - state.position.declination;
+          trueHeading = trueHeading % 360;
+
+          let correctedHeading = trueHeading - state.screen.orientation;
 
           state.position.headingHistory.push(correctedHeading);
           if (
@@ -2292,6 +2373,8 @@
             interpolated: null,
             lastSpeed: 0,
             speedHistory: [],
+            declination: 0,
+            declinationCalculated: false,
           });
           Object.assign(state.map, {
             mode: "north-up",
@@ -2332,7 +2415,7 @@
               : "en";
             state.settings.language = defaultLang;
             state.settings.updateInterval = 5000;
-            state.settings.compassInterval = 0.5;
+            state.settings.compassInterval = 500;
             state.settings.invertCompass = true;
             app.updateIntervalSelect.value = "5000";
             app.compassIntervalSelect.value = "500";
