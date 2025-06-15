@@ -1740,7 +1740,6 @@
           const now = Date.now();
           const prevLastCompassUpdate = state.position.lastCompassUpdate;
           if (now - prevLastCompassUpdate < 100) return;
-          state.position.lastCompassUpdate = now;
 
           let magneticHeading = e.webkitCompassHeading || e.alpha;
           if (typeof magneticHeading !== "number" || isNaN(magneticHeading))
@@ -1783,6 +1782,8 @@
             now - prevLastCompassUpdate < state.settings.compassInterval
           )
             return;
+
+          state.position.lastCompassUpdate = now;
 
           if (state.tracking.isOffRoute) {
             updateOffRouteCompass();
