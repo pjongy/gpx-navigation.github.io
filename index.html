@@ -744,8 +744,8 @@
             >GPS 갱신 주기 (초)</label
           ><select id="update-interval">
             <option value="1000">1</option>
-            <option value="5000">5</option>
-            <option value="15000" selected>15</option>
+            <option value="5000" selected>5</option>
+            <option value="15000">15</option>
             <option value="30000">30</option>
             <option value="60000">60</option>
             <option value="300000">300</option>
@@ -756,8 +756,8 @@
             >나침반 갱신 주기 (초)</label
           ><select id="compass-interval">
             <option value="0" data-i18n="realtime">실시간</option>
-            <option value="100" selected>0.1</option>
-            <option value="500">0.5</option>
+            <option value="100">0.1</option>
+            <option value="500" selected>0.5</option>
             <option value="1000">1</option>
             <option value="5000">5</option>
           </select>
@@ -898,8 +898,8 @@
           },
           screen: { orientation: 0 },
           settings: {
-            updateInterval: 15000,
-            compassInterval: 0.1,
+            updateInterval: 5000,
+            compassInterval: 0.5,
             language: "ko",
             invertCompass: true,
           },
@@ -2306,11 +2306,11 @@
               ? "ko"
               : "en";
             state.settings.language = defaultLang;
-            state.settings.updateInterval = 15000;
-            state.settings.compassInterval = 0.1;
+            state.settings.updateInterval = 5000;
+            state.settings.compassInterval = 0.5;
             state.settings.invertCompass = true;
-            app.updateIntervalSelect.value = "15000";
-            app.compassIntervalSelect.value = "100";
+            app.updateIntervalSelect.value = "5000";
+            app.compassIntervalSelect.value = "500";
             app.invertCompassToggle.checked = true;
             setLanguage(defaultLang);
             showModal("alert", "resetSuccess");
