@@ -171,6 +171,15 @@
       #journey-box .sub-info-box {
         text-align: center;
       }
+      /* Change for total distance display */
+      #distance-display .value {
+         font-size: clamp(1.1em, 4vw, 1.6em);
+      }
+       #distance-display .unit {
+         font-size: clamp(0.8em, 3vw, 1em);
+         color: var(--secondary-text-color);
+      }
+
       #map-container {
         position: relative;
         background-color: var(--bg-color);
@@ -595,9 +604,12 @@
           <div class="info-box" id="journey-box">
             <div class="sub-info-box" id="distance-sub-box">
               <div class="label" data-i18n="totalDistance">누적 거리</div>
-              <div>
-                <span class="value" id="distance-value">0.00</span
-                ><span class="unit">km</span>
+              <!-- HTML CHANGE: Modified for total distance display -->
+              <div id="distance-display">
+                <span class="value" id="distance-value">0.00</span>
+                <span class="unit" id="distance-unit-separator" style="display: none;"> / </span>
+                <span class="unit" id="total-distance-value"></span>
+                <span class="unit">km</span>
               </div>
             </div>
             <div class="sub-info-box" id="time-sub-box">
@@ -837,6 +849,9 @@
           menuOverlay: $("#menu-overlay"),
           speedValue: $("#speed-value"),
           distanceValue: $("#distance-value"),
+          // JS CHANGE: Add new elements for total distance
+          totalDistanceValue: $("#total-distance-value"),
+          distanceUnitSeparator: $("#distance-unit-separator"),
           avgSpeedValue: $("#avg-speed-value"),
           timeValue: $("#time-value"),
           mapSvg: $("#map-svg"),
@@ -869,7 +884,8 @@
         };
 
         const state = {
-          gpx: { points: [], bounds: null, metersPerUnit: 1 },
+          // JS CHANGE: Add totalDistance to gpx state
+          gpx: { points: [], bounds: null, metersPerUnit: 1, totalDistance: 0 },
           tracking: {
             isActive: false,
             startTime: null,
@@ -1062,7 +1078,7 @@
         const i18n = {
           ko: {
             currentSpeed: "현재 속도",
-            totalDistance: "누적 거리",
+            totalDistance: "누적/총 거리", // Change label
             totalTime: "누적 시간",
             avgSpeed: "평균 속력",
             fileManagement: "파일 관리",
@@ -1106,7 +1122,7 @@
           },
           en: {
             currentSpeed: "Current Speed",
-            totalDistance: "Distance",
+            totalDistance: "Distance / Total", // Change label
             totalTime: "Time",
             avgSpeed: "Avg. Speed",
             fileManagement: "File Management",
@@ -1311,6 +1327,13 @@
           app.gpxTrackContainer.appendChild(fragment);
           state.gpx.metersPerUnit =
             projectedDist > 0 ? totalDistanceMeters / projectedDist : 1;
+          
+          // JS CHANGE: Calculate, store, and display total GPX distance
+          state.gpx.totalDistance = totalDistanceMeters / 1000; // Store as km
+          app.totalDistanceValue.textContent = state.gpx.totalDistance.toFixed(2);
+          app.distanceUnitSeparator.style.display = 'inline';
+          // End of change
+
           setZoom("fit");
         };
 
@@ -2401,13 +2424,17 @@
           app.mapSvg.setAttribute("viewBox", "0 0 1000 1000");
           app.mapSvg.style.visibility = "visible";
 
+          // JS CHANGE: Reset total distance display
           app.gpxTrackContainer.innerHTML = "";
+          app.totalDistanceValue.textContent = "";
+          app.distanceUnitSeparator.style.display = 'none';
 
           if (fullReset) {
             Object.assign(state.gpx, {
               points: [],
               bounds: null,
               metersPerUnit: 1,
+              totalDistance: 0, // Reset state variable
             });
             app.trackBtn.disabled = true;
             app.gpxFileInput.value = "";
