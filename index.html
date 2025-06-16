@@ -743,23 +743,15 @@
           data-action="toggle-tracking"
           data-i18n="startTracking"
         >
-          추적 시작</button
-        ><button
-          class="menu-btn"
-          data-action="save-journey"
-          data-i18n="saveJourneySummary"
-          disabled
-        >
-          여정 요약 저장
+          추적 시작
         </button>
-        <!-- HTML CHANGE: Add new button for downloading raw GPX -->
         <button
           class="menu-btn"
-          data-action="save-raw-journey"
-          data-i18n="saveRawJourney"
+          data-action="save-journey"
+          data-i18n="saveJourney"
           disabled
         >
-          실제 경로 저장
+          여정 저장
         </button>
       </div>
       <div class="menu-section">
@@ -875,7 +867,6 @@
           mapModeBtn: $('[data-action="toggle-map-mode"]'),
           centerMapBtn: $('[data-action="center-map"]'),
           saveBtn: $('[data-action="save-journey"]'),
-          saveRawBtn: $('[data-action="save-raw-journey"]'),
           gpxFileInput: $("#gpx-file-input"),
           updateIntervalSelect: $("#update-interval"),
           compassIntervalSelect: $("#compass-interval"),
@@ -1111,8 +1102,7 @@
             journeyLog: "여정 기록",
             startTracking: "추적 시작",
             stopTracking: "추적 중지",
-            saveJourneySummary: "여정 요약 저장",
-            saveRawJourney: "실제 경로 저장",
+            saveJourney: "여정 저장",
             settings: "설정",
             updateInterval: "GPS 갱신 주기 (초)",
             compassInterval: "나침반 갱신 주기 (초)",
@@ -1136,7 +1126,6 @@
             gpsError: "위치 정보를 가져올 수 없습니다.",
             noGpxFile: "먼저 GPX 파일을 로드해주세요.",
             noJourneyData: "저장할 여정 기록이 없습니다.",
-            noRawJourneyData: "저장할 실제 경로 기록이 없습니다.",
             resetConfirm: "모든 데이터를 초기화하시겠습니까?",
             resetConfirmBtn: "초기화",
             cancelBtn: "취소",
@@ -1146,6 +1135,8 @@
             offRouteWarning: "경로를 이탈했습니다.",
             resetSuccess: "초기화가 완료되었습니다.",
             gradientLegend: "경사도 범례",
+            journeySummary: "여정 요약",
+            download: "다운로드",
           },
           en: {
             currentSpeed: "Current Speed",
@@ -1157,8 +1148,7 @@
             journeyLog: "Journey Log",
             startTracking: "Start Tracking",
             stopTracking: "Stop Tracking",
-            saveJourneySummary: "Save Journey Summary",
-            saveRawJourney: "Save Actual Route",
+            saveJourney: "Save Journey",
             settings: "Settings",
             updateInterval: "GPS Update Interval (sec)",
             compassInterval: "Compass Update Rate (sec)",
@@ -1182,7 +1172,6 @@
             gpsError: "Could not retrieve location information.",
             noGpxFile: "Please load a GPX file first.",
             noJourneyData: "There is no journey data to save.",
-            noRawJourneyData: "There is no actual route data to save.",
             resetConfirm: "Are you sure you want to reset all data?",
             resetConfirmBtn: "Reset",
             cancelBtn: "Cancel",
@@ -1192,6 +1181,8 @@
             offRouteWarning: "Off route.",
             resetSuccess: "Reset complete.",
             gradientLegend: "Gradient Legend",
+            journeySummary: "Journey Summary",
+            download: "Download",
           },
         };
 
@@ -1240,7 +1231,7 @@
           if (buttons.length > 0) {
             buttons.forEach((b) => {
               const btn = document.createElement("button");
-              btn.textContent = i18n[lang][b.textKey];
+              btn.textContent = i18n[lang][b.textKey] || b.textKey;
               btn.className = b.class || "modal-close-btn";
               btn.onclick = () => {
                 hideModal();
@@ -1545,7 +1536,7 @@
             state.rawTracking.tempPoints = [];
             state.rawTracking.totalDistance = 0;
             state.rawTracking.isLoggingPaused = false;
-            app.saveRawBtn.disabled = true;
+            app.saveBtn.disabled = true; // Was saveRawBtn
           }
 
           state.tracking.timerId = setInterval(updateTimer, 1000);
@@ -1564,7 +1555,7 @@
           clearInterval(state.tracking.timerId);
           stopInterpolation();
           state.tracking.gpsTimeoutId = state.tracking.timerId = null;
-          app.saveBtn.disabled = !state.tracking.startTime;
+          app.saveBtn.disabled = state.rawTracking.log.length === 0;
           if (state.wakeLock) {
             state.wakeLock.release();
             state.wakeLock = null;
@@ -1644,7 +1635,9 @@
               }
 
               state.rawTracking.log.push(medianPoint);
-              app.saveRawBtn.disabled = false;
+              if (!state.tracking.isActive) {
+                app.saveBtn.disabled = false;
+              }
 
               // Reset for the next 3-minute cycle
               state.rawTracking.tempPoints = [];
@@ -2439,10 +2432,7 @@
                     .catch((err) => console.error(err));
               break;
             case "save-journey":
-              exportJourneyData();
-              break;
-            case "save-raw-journey":
-              exportRawJourneyGpx();
+              showJourneySummaryAndDownload();
               break;
           }
         };
@@ -2522,7 +2512,7 @@
             startTime: null,
             isLoggingPaused: false,
           });
-          app.saveRawBtn.disabled = true;
+          app.saveBtn.disabled = true;
 
           app.userPath.setAttribute("d", "");
           app.marker.setAttribute("visibility", "hidden");
@@ -2569,33 +2559,49 @@
           updateScaleBar();
         };
 
-        const exportJourneyData = () => {
-          if (!state.tracking.startTime)
+        const showJourneySummaryAndDownload = () => {
+          if (state.rawTracking.log.length === 0) {
             return showModal("error", "noJourneyData");
-          const journeyData = {
-            startTime: new Date(state.tracking.startTime).toISOString(),
-            endTime: new Date().toISOString(),
-            totalDistanceKm: state.tracking.totalDistance,
-            elapsedTimeSec: state.tracking.elapsedTime,
-            avgSpeedKmh:
-              state.tracking.elapsedTime > 0
-                ? state.tracking.totalDistance /
-                  (state.tracking.elapsedTime / 3600)
-                : 0,
-          };
-          const blob = new Blob([JSON.stringify(journeyData, null, 2)], {
-            type: "application/json",
-          });
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = `journey_summary_${Date.now()}.json`;
-          a.click();
-          URL.revokeObjectURL(a.href);
+          }
+
+          // 1. Calculate Summary Stats
+          const distanceKm = state.rawTracking.totalDistance;
+          const elapsedMs = state.rawTracking.startTime
+            ? Date.now() - state.rawTracking.startTime
+            : state.tracking.elapsedTime * 1000;
+          const totalSeconds = Math.floor(elapsedMs / 1000);
+          const hours = Math.floor(totalSeconds / 3600);
+          const minutes = Math.floor((totalSeconds % 3600) / 60);
+          const seconds = totalSeconds % 60;
+          const elapsedHours = elapsedMs / 3600000;
+          const avgSpeedKmh = elapsedHours > 0 ? distanceKm / elapsedHours : 0;
+
+          const lang = state.settings.language;
+
+          // 2. Format the summary message
+          const summaryMessage = `
+            <div style="text-align: left; margin: 0 auto; display: inline-block;">
+              <strong>${i18n[lang].totalDistance.split("/")[0].trim()}:</strong> ${distanceKm.toFixed(2)} km<br>
+              <strong>${i18n[lang].totalTime}:</strong> ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}<br>
+              <strong>${i18n[lang].avgSpeed}:</strong> ${avgSpeedKmh.toFixed(1)} km/h
+            </div>
+          `;
+
+          // 3. Show the modal with options
+          showModal("journeySummary", summaryMessage, [
+            { textKey: "cancelBtn" },
+            {
+              textKey: "download",
+              class: "modal-confirm-btn",
+              onClick: downloadGpxFile, // Call download function on confirm
+            },
+          ]);
         };
 
-        const exportRawJourneyGpx = () => {
+        const downloadGpxFile = () => {
           if (state.rawTracking.log.length === 0) {
-            return showModal("error", "noRawJourneyData");
+            // This check is redundant due to the calling function, but safe to keep
+            return showModal("error", "noJourneyData");
           }
 
           const pad = (num) => String(num).padStart(2, "0");
