@@ -173,11 +173,11 @@
       }
       /* Change for total distance display */
       #distance-display .value {
-         font-size: clamp(1.1em, 4vw, 1.6em);
+        font-size: clamp(1.1em, 4vw, 1.6em);
       }
-       #distance-display .unit {
-         font-size: clamp(0.8em, 3vw, 1em);
-         color: var(--secondary-text-color);
+      #distance-display .unit {
+        font-size: clamp(0.8em, 3vw, 1em);
+        color: var(--secondary-text-color);
       }
 
       #map-container {
@@ -604,10 +604,15 @@
           <div class="info-box" id="journey-box">
             <div class="sub-info-box" id="distance-sub-box">
               <div class="label" data-i18n="totalDistance">누적 거리</div>
-              <!-- HTML CHANGE: Modified for total distance display -->
               <div id="distance-display">
                 <span class="value" id="distance-value">0.00</span>
-                <span class="unit" id="distance-unit-separator" style="display: none;"> / </span>
+                <span
+                  class="unit"
+                  id="distance-unit-separator"
+                  style="display: none"
+                >
+                  /
+                </span>
                 <span class="unit" id="total-distance-value"></span>
                 <span class="unit">km</span>
               </div>
@@ -629,7 +634,6 @@
       <div id="map-container">
         <svg id="map-svg">
           <g id="map-group">
-            <!-- Container for GPX track segments -->
             <g id="gpx-track-container"></g>
             <path id="user-path"></path>
           </g>
@@ -748,6 +752,15 @@
         >
           여정 요약 저장
         </button>
+        <!-- HTML CHANGE: Add new button for downloading raw GPX -->
+        <button
+          class="menu-btn"
+          data-action="save-raw-journey"
+          data-i18n="saveRawJourney"
+          disabled
+        >
+          실제 경로 저장
+        </button>
       </div>
       <div class="menu-section">
         <h3 data-i18n="settings">설정</h3>
@@ -849,7 +862,6 @@
           menuOverlay: $("#menu-overlay"),
           speedValue: $("#speed-value"),
           distanceValue: $("#distance-value"),
-          // JS CHANGE: Add new elements for total distance
           totalDistanceValue: $("#total-distance-value"),
           distanceUnitSeparator: $("#distance-unit-separator"),
           avgSpeedValue: $("#avg-speed-value"),
@@ -863,6 +875,7 @@
           mapModeBtn: $('[data-action="toggle-map-mode"]'),
           centerMapBtn: $('[data-action="center-map"]'),
           saveBtn: $('[data-action="save-journey"]'),
+          saveRawBtn: $('[data-action="save-raw-journey"]'),
           gpxFileInput: $("#gpx-file-input"),
           updateIntervalSelect: $("#update-interval"),
           compassIntervalSelect: $("#compass-interval"),
@@ -884,7 +897,6 @@
         };
 
         const state = {
-          // JS CHANGE: Add totalDistance to gpx state
           gpx: { points: [], bounds: null, metersPerUnit: 1, totalDistance: 0 },
           tracking: {
             isActive: false,
@@ -895,6 +907,14 @@
             elapsedTime: 0,
             previousSnap: null,
             isOffRoute: false,
+          },
+          rawTracking: {
+            log: [],
+            tempPoints: [],
+            lastLogTime: 0,
+            totalDistance: 0,
+            startTime: null,
+            isLoggingPaused: false,
           },
           position: {
             current: null,
@@ -944,6 +964,7 @@
           ORIGINAL_MARKER_SVG_HEIGHT: 120,
           INTERPOLATION_DISTANCE_THRESHOLD_KM: 0.001, // 1 meter
           MIN_COMPASS_THROTTLE_MS: 100, // Minimum throttle for "real-time" compass
+          RAW_LOG_INTERVAL_MS: 3 * 60 * 1000, // 3 minutes
         };
 
         // --- Magnetic Declination Logic Start ---
@@ -965,14 +986,14 @@
           ],
           // Equatorial -22.5°~22.5°
           [
-            8, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, -1, -2, -5, -8, -11, -14, -16,
-            -15, -13, -10, -7, -4, 0, 4, 7, 9, 10, 10, 8, 6, 5, 5, 6, 7, 8,
+            8, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, -1, -2, -5, -8, -11, -14, -16, -15,
+            -13, -10, -7, -4, 0, 4, 7, 9, 10, 10, 8, 6, 5, 5, 6, 7, 8,
           ],
           // Mid South -67.5°~(-22.5)°
           [
-            25, 22, 18, 12, 5, -2, -8, -14, -18, -20, -20, -18, -14, -8, 0,
-            10, 22, 35, 45, 50, 48, 42, 35, 28, 22, 18, 16, 16, 18, 21, 24,
-            26, 27, 26, 25, 25,
+            25, 22, 18, 12, 5, -2, -8, -14, -18, -20, -20, -18, -14, -8, 0, 10,
+            22, 35, 45, 50, 48, 42, 35, 28, 22, 18, 16, 16, 18, 21, 24, 26, 27,
+            26, 25, 25,
           ],
           // High South -90°~(-67.5)°
           [
@@ -987,10 +1008,14 @@
 
           // Calculate latitude index (5 zones)
           let latIndex;
-          if (lat >= 67.5) latIndex = 0; // High North
-          else if (lat >= 22.5) latIndex = 1; // Mid North
-          else if (lat >= -22.5) latIndex = 2; // Equatorial
-          else if (lat >= -67.5) latIndex = 3; // Mid South
+          if (lat >= 67.5)
+            latIndex = 0; // High North
+          else if (lat >= 22.5)
+            latIndex = 1; // Mid North
+          else if (lat >= -22.5)
+            latIndex = 2; // Equatorial
+          else if (lat >= -67.5)
+            latIndex = 3; // Mid South
           else latIndex = 4; // High South
 
           // Calculate longitude index (36 sections: -180° to 180°, 10° interval)
@@ -1078,7 +1103,7 @@
         const i18n = {
           ko: {
             currentSpeed: "현재 속도",
-            totalDistance: "누적/총 거리", // Change label
+            totalDistance: "누적/총 거리",
             totalTime: "누적 시간",
             avgSpeed: "평균 속력",
             fileManagement: "파일 관리",
@@ -1087,6 +1112,7 @@
             startTracking: "추적 시작",
             stopTracking: "추적 중지",
             saveJourneySummary: "여정 요약 저장",
+            saveRawJourney: "실제 경로 저장",
             settings: "설정",
             updateInterval: "GPS 갱신 주기 (초)",
             compassInterval: "나침반 갱신 주기 (초)",
@@ -1110,6 +1136,7 @@
             gpsError: "위치 정보를 가져올 수 없습니다.",
             noGpxFile: "먼저 GPX 파일을 로드해주세요.",
             noJourneyData: "저장할 여정 기록이 없습니다.",
+            noRawJourneyData: "저장할 실제 경로 기록이 없습니다.",
             resetConfirm: "모든 데이터를 초기화하시겠습니까?",
             resetConfirmBtn: "초기화",
             cancelBtn: "취소",
@@ -1122,7 +1149,7 @@
           },
           en: {
             currentSpeed: "Current Speed",
-            totalDistance: "Distance / Total", // Change label
+            totalDistance: "Distance / Total",
             totalTime: "Time",
             avgSpeed: "Avg. Speed",
             fileManagement: "File Management",
@@ -1131,6 +1158,7 @@
             startTracking: "Start Tracking",
             stopTracking: "Stop Tracking",
             saveJourneySummary: "Save Journey Summary",
+            saveRawJourney: "Save Actual Route",
             settings: "Settings",
             updateInterval: "GPS Update Interval (sec)",
             compassInterval: "Compass Update Rate (sec)",
@@ -1154,6 +1182,7 @@
             gpsError: "Could not retrieve location information.",
             noGpxFile: "Please load a GPX file first.",
             noJourneyData: "There is no journey data to save.",
+            noRawJourneyData: "There is no actual route data to save.",
             resetConfirm: "Are you sure you want to reset all data?",
             resetConfirmBtn: "Reset",
             cancelBtn: "Cancel",
@@ -1327,12 +1356,11 @@
           app.gpxTrackContainer.appendChild(fragment);
           state.gpx.metersPerUnit =
             projectedDist > 0 ? totalDistanceMeters / projectedDist : 1;
-          
-          // JS CHANGE: Calculate, store, and display total GPX distance
+
           state.gpx.totalDistance = totalDistanceMeters / 1000; // Store as km
-          app.totalDistanceValue.textContent = state.gpx.totalDistance.toFixed(2);
-          app.distanceUnitSeparator.style.display = 'inline';
-          // End of change
+          app.totalDistanceValue.textContent =
+            state.gpx.totalDistance.toFixed(2);
+          app.distanceUnitSeparator.style.display = "inline";
 
           setZoom("fit");
         };
@@ -1502,13 +1530,24 @@
           await checkGpsPermission();
           if (state.permissions.gps === "denied")
             return showModal("error", "permissionDenied");
+
           state.tracking.isActive = true;
           app.trackBtn.textContent = i18n[state.settings.language].stopTracking;
           app.trackBtn.style.backgroundColor = "var(--accent-color)";
           app.retryWakelockBtn.style.display = "block";
+
           if (!state.tracking.startTime) {
-            state.tracking.startTime = Date.now();
+            const now = Date.now();
+            state.tracking.startTime = now;
+            state.rawTracking.startTime = now;
+            state.rawTracking.lastLogTime = now;
+            state.rawTracking.log = [];
+            state.rawTracking.tempPoints = [];
+            state.rawTracking.totalDistance = 0;
+            state.rawTracking.isLoggingPaused = false;
+            app.saveRawBtn.disabled = true;
           }
+
           state.tracking.timerId = setInterval(updateTimer, 1000);
           updatePosition();
           setZoom(2);
@@ -1550,12 +1589,78 @@
           });
         };
 
+        const handleRawGpsLogging = (position, now) => {
+          const { latitude, longitude, elevation } = position.coords;
+
+          // Check if it's time to start collecting a new batch of 4 points
+          if (
+            now - state.rawTracking.lastLogTime >
+              CONSTANTS.RAW_LOG_INTERVAL_MS &&
+            !state.rawTracking.isLoggingPaused
+          ) {
+            state.rawTracking.isLoggingPaused = true; // Pause logging until 4 points are collected
+            state.rawTracking.tempPoints = [];
+          }
+
+          // Collect points if logging is in the "collection" phase
+          if (
+            state.rawTracking.isLoggingPaused &&
+            state.rawTracking.tempPoints.length < 4
+          ) {
+            state.rawTracking.tempPoints.push({
+              lat: latitude,
+              lon: longitude,
+              ele: elevation || 0,
+              time: new Date(now).toISOString(),
+            });
+
+            // If 4 points are collected, process them
+            if (state.rawTracking.tempPoints.length === 4) {
+              const lats = state.rawTracking.tempPoints
+                .map((p) => p.lat)
+                .sort((a, b) => a - b);
+              const lons = state.rawTracking.tempPoints
+                .map((p) => p.lon)
+                .sort((a, b) => a - b);
+              const eles = state.rawTracking.tempPoints
+                .map((p) => p.ele)
+                .sort((a, b) => a - b);
+
+              const medianPoint = {
+                lat: (lats[1] + lats[2]) / 2,
+                lon: (lons[1] + lons[2]) / 2,
+                ele: (eles[1] + eles[2]) / 2,
+                time: new Date().toISOString(),
+              };
+
+              // Calculate distance from the last logged point
+              const lastLoggedPoint =
+                state.rawTracking.log[state.rawTracking.log.length - 1];
+              if (lastLoggedPoint) {
+                state.rawTracking.totalDistance += haversineDistance(
+                  lastLoggedPoint,
+                  medianPoint,
+                );
+              }
+
+              state.rawTracking.log.push(medianPoint);
+              app.saveRawBtn.disabled = false;
+
+              // Reset for the next 3-minute cycle
+              state.rawTracking.tempPoints = [];
+              state.rawTracking.lastLogTime = now;
+              state.rawTracking.isLoggingPaused = false;
+            }
+          }
+        };
+
         const onGpsSuccess = (position) => {
           try {
             const now = performance.now();
             const { latitude, longitude } = position.coords;
 
-            // Calculate and store declination on first GPS fix
+            handleRawGpsLogging(position, Date.now());
+
             if (!state.position.declinationCalculated) {
               state.position.declination = getMagneticDeclination(
                 latitude,
@@ -1573,7 +1678,6 @@
               point: closest.point,
               index: closest.index,
             };
-
             const offRouteDistance = haversineDistance(
               { lat: latitude, lon: longitude },
               closest.point,
@@ -1740,7 +1844,6 @@
               ? `${(distMeters / 1000).toFixed(1)} km`
               : `${distMeters.toFixed(0)} m`;
 
-          // --- Start of change ---
           // Calculate the bearing from the current position to the closest point on the track
           const bearingToTrack = bearing(
             latitude,
@@ -2338,6 +2441,9 @@
             case "save-journey":
               exportJourneyData();
               break;
+            case "save-raw-journey":
+              exportRawJourneyGpx();
+              break;
           }
         };
         const handleMapPan = (e) => {
@@ -2408,6 +2514,16 @@
           });
           stopInterpolation();
 
+          Object.assign(state.rawTracking, {
+            log: [],
+            tempPoints: [],
+            lastLogTime: 0,
+            totalDistance: 0,
+            startTime: null,
+            isLoggingPaused: false,
+          });
+          app.saveRawBtn.disabled = true;
+
           app.userPath.setAttribute("d", "");
           app.marker.setAttribute("visibility", "hidden");
           app.offRouteWarning.style.display = "none";
@@ -2424,17 +2540,16 @@
           app.mapSvg.setAttribute("viewBox", "0 0 1000 1000");
           app.mapSvg.style.visibility = "visible";
 
-          // JS CHANGE: Reset total distance display
           app.gpxTrackContainer.innerHTML = "";
           app.totalDistanceValue.textContent = "";
-          app.distanceUnitSeparator.style.display = 'none';
+          app.distanceUnitSeparator.style.display = "none";
 
           if (fullReset) {
             Object.assign(state.gpx, {
               points: [],
               bounds: null,
               metersPerUnit: 1,
-              totalDistance: 0, // Reset state variable
+              totalDistance: 0,
             });
             app.trackBtn.disabled = true;
             app.gpxFileInput.value = "";
@@ -2478,11 +2593,62 @@
           URL.revokeObjectURL(a.href);
         };
 
+        const exportRawJourneyGpx = () => {
+          if (state.rawTracking.log.length === 0) {
+            return showModal("error", "noRawJourneyData");
+          }
+
+          const pad = (num) => String(num).padStart(2, "0");
+          const startDate = new Date(state.rawTracking.startTime);
+
+          // Filename: Start Time
+          const f_startTime = `${String(startDate.getFullYear()).slice(2)}${pad(startDate.getMonth() + 1)}${pad(startDate.getDate())}T${pad(startDate.getHours())}${pad(startDate.getMinutes())}`;
+
+          // Filename: Duration
+          const elapsedMs = Date.now() - state.rawTracking.startTime;
+          const totalMinutes = Math.floor(elapsedMs / 60000);
+          const hours = Math.floor(totalMinutes / 60);
+          const minutes = totalMinutes % 60;
+          const f_duration = `${hours}H${pad(minutes)}M`;
+
+          // Filename: Distance
+          const f_distance = `${Math.round(state.rawTracking.totalDistance)}KM`;
+
+          // Filename: Average Speed
+          const elapsedHours = elapsedMs / 3600000;
+          const avgSpeed =
+            elapsedHours > 0
+              ? (state.rawTracking.totalDistance / elapsedHours).toFixed(0)
+              : 0;
+          const f_avgSpeed = `${avgSpeed}KMH`;
+
+          const filename = `${f_startTime}_${f_duration}_${f_distance}_${f_avgSpeed}.gpx`;
+
+          let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GPX Voyager" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+ <trk>
+  <name>${filename}</name>
+  <trkseg>\n`;
+
+          state.rawTracking.log.forEach((point) => {
+            gpxContent += `   <trkpt lat="${point.lat.toFixed(6)}" lon="${point.lon.toFixed(6)}"><ele>${point.ele.toFixed(2)}</ele><time>${point.time}</time></trkpt>\n`;
+          });
+
+          gpxContent += `  </trkseg>\n </trk>\n</gpx>`;
+
+          const blob = new Blob([gpxContent], { type: "application/gpx+xml" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        };
+
         const init = () => {
           const userLang = navigator.language.startsWith("ko") ? "ko" : "en";
           setLanguage(userLang);
           app.invertCompassToggle.checked = true;
-          state.settings.invertCompass = true; // Sync state
+          state.settings.invertCompass = true;
           checkGpsPermission();
           handleOrientationChange();
           window.addEventListener("orientationchange", handleOrientationChange);
