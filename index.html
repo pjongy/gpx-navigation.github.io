@@ -765,7 +765,6 @@
             <option value="15000">15</option>
             <option value="30000">30</option>
             <option value="60000">60</option>
-            <option value="300000">300</option>
           </select>
         </div>
         <div class="setting-item">
@@ -902,7 +901,6 @@
           rawTracking: {
             log: [],
             tempPoints: [],
-            lastLogTime: 0,
             totalDistance: 0,
             startTime: null,
             isLoggingPaused: false,
@@ -1531,12 +1529,11 @@
             const now = Date.now();
             state.tracking.startTime = now;
             state.rawTracking.startTime = now;
-            state.rawTracking.lastLogTime = now;
             state.rawTracking.log = [];
             state.rawTracking.tempPoints = [];
             state.rawTracking.totalDistance = 0;
             state.rawTracking.isLoggingPaused = false;
-            app.saveBtn.disabled = true; // Was saveRawBtn
+            app.saveBtn.disabled = true;
           }
 
           state.tracking.timerId = setInterval(updateTimer, 1000);
@@ -1580,20 +1577,36 @@
           });
         };
 
+        /**
+         * @file handleRawGpsLogging.js
+         * @description Handles the logic for recording the user's journey for later saving.
+         * This function is called on every successful GPS update.
+         * It records the median of 4 GPS points at 3-minute intervals (0m, 3m, 6m, etc.) from the start of the journey.
+         */
         const handleRawGpsLogging = (position, now) => {
           const { latitude, longitude, elevation } = position.coords;
 
-          // Check if it's time to start collecting a new batch of 4 points
+          // Determine if a new logging cycle should start based on the journey start time.
+          // A new cycle begins at 0min, 3min, 6min, etc.
+          const intervalsPassed = state.rawTracking.startTime
+            ? Math.floor(
+                (now - state.rawTracking.startTime) /
+                  CONSTANTS.RAW_LOG_INTERVAL_MS,
+              )
+            : 0;
+          const logsMade = state.rawTracking.log.length;
+
+          // If the number of intervals that should have passed is greater than the logs actually made,
+          // and we are not already collecting points, start a new collection.
           if (
-            now - state.rawTracking.lastLogTime >
-              CONSTANTS.RAW_LOG_INTERVAL_MS &&
+            intervalsPassed >= logsMade &&
             !state.rawTracking.isLoggingPaused
           ) {
-            state.rawTracking.isLoggingPaused = true; // Pause logging until 4 points are collected
+            state.rawTracking.isLoggingPaused = true;
             state.rawTracking.tempPoints = [];
           }
 
-          // Collect points if logging is in the "collection" phase
+          // If in the collection phase, add the current point until we have 4.
           if (
             state.rawTracking.isLoggingPaused &&
             state.rawTracking.tempPoints.length < 4
@@ -1605,7 +1618,7 @@
               time: new Date(now).toISOString(),
             });
 
-            // If 4 points are collected, process them
+            // Once 4 points are collected, process them to get the median.
             if (state.rawTracking.tempPoints.length === 4) {
               const lats = state.rawTracking.tempPoints
                 .map((p) => p.lat)
@@ -1624,7 +1637,7 @@
                 time: new Date().toISOString(),
               };
 
-              // Calculate distance from the last logged point
+              // Calculate distance from the last logged point.
               const lastLoggedPoint =
                 state.rawTracking.log[state.rawTracking.log.length - 1];
               if (lastLoggedPoint) {
@@ -1635,13 +1648,14 @@
               }
 
               state.rawTracking.log.push(medianPoint);
+
+              // Enable the save button if tracking is stopped and there's log data.
               if (!state.tracking.isActive) {
                 app.saveBtn.disabled = false;
               }
 
-              // Reset for the next 3-minute cycle
+              // Reset for the next logging interval.
               state.rawTracking.tempPoints = [];
-              state.rawTracking.lastLogTime = now;
               state.rawTracking.isLoggingPaused = false;
             }
           }
@@ -2507,7 +2521,6 @@
           Object.assign(state.rawTracking, {
             log: [],
             tempPoints: [],
-            lastLogTime: 0,
             totalDistance: 0,
             startTime: null,
             isLoggingPaused: false,
