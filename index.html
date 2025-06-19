@@ -832,7 +832,7 @@
     <script>
       // Service Worker Registration
       if ("serviceWorker" in navigator) {
-        const swScript = `const CACHE_NAME = 'gps-voyager-cache-v40-utm-center-fix'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
+        const swScript = `const CACHE_NAME = 'gps-voyager-cache-v41-heading-fix'; self.addEventListener('install', e => e.waitUntil(caches.open(CACHE_NAME).then(c => c.add(location.pathname)))); self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)))); self.addEventListener('activate', e => e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : undefined)))));`;
         navigator.serviceWorker.register(
           URL.createObjectURL(
             new Blob([swScript], { type: "application/javascript" }),
@@ -1530,6 +1530,7 @@
             app.saveBtn.disabled = true;
           }
           state.tracking.timerId = setInterval(updateTimer, 1000);
+          addOrientationListener();
           updatePosition();
           setZoom(2);
           requestWakeLock(false);
@@ -1544,6 +1545,7 @@
           clearTimeout(state.tracking.gpsTimeoutId);
           clearInterval(state.tracking.timerId);
           stopInterpolation();
+          removeOrientationListener();
           state.tracking.gpsTimeoutId = state.tracking.timerId = null;
           app.saveBtn.disabled = state.rawTracking.log.length === 0;
           if (state.wakeLock) {
@@ -1789,33 +1791,24 @@
         const updateOffRouteCompass = () => {
           if (
             !state.tracking.isOffRoute ||
-            !state.position.current ||
             !state.position.currentUtm ||
             !state.position.snapped.point
           )
             return;
 
-          const userLat = state.position.current.coords.latitude;
-          const userLon = state.position.current.coords.longitude;
           const userUtm = state.position.currentUtm;
           const closestUtm = state.position.snapped.point;
 
           const deltaEasting = closestUtm.easting - userUtm.easting;
           const deltaNorthing = closestUtm.northing - userUtm.northing;
           const gridBearingRad = Math.atan2(deltaEasting, deltaNorthing);
-          let gridBearing = toDeg(gridBearingRad);
+          const gridBearing = toDeg(gridBearingRad);
 
-          const lonOrigin = state.gpx.utmZone * 6 - 183;
-          const convergenceRad =
-            toRad(userLon - lonOrigin) * Math.sin(toRad(userLat));
-          const convergence = toDeg(convergenceRad);
-
-          const trueBearing = gridBearing + convergence;
-          let deviceRotation = state.settings.invertCompass
+          let deviceGridHeading = state.settings.invertCompass
             ? -state.position.heading
             : state.position.heading;
 
-          let arrowRotation = trueBearing - deviceRotation;
+          let arrowRotation = (gridBearing - deviceGridHeading + 360) % 360;
 
           app.offRouteArrow.style.transform = `rotate(${arrowRotation}deg)`;
 
@@ -1826,16 +1819,61 @@
               : `${distMeters.toFixed(0)} m`;
         };
 
+        const orientationEvent =
+          "ondeviceorientationabsolute" in window
+            ? "deviceorientationabsolute"
+            : "deviceorientation";
+
+        const addOrientationListener = () => {
+          if (window.DeviceOrientationEvent) {
+            window.addEventListener(
+              orientationEvent,
+              handleDeviceOrientation,
+              true,
+            );
+          }
+        };
+
+        const removeOrientationListener = () => {
+          if (window.DeviceOrientationEvent) {
+            window.removeEventListener(
+              orientationEvent,
+              handleDeviceOrientation,
+              true,
+            );
+          }
+        };
+
         const handleDeviceOrientation = (e) => {
           const now = Date.now();
-          if (now - state.position.lastCompassUpdate < 100) return;
+          if (
+            now - state.position.lastCompassUpdate <
+            CONSTANTS.MIN_COMPASS_THROTTLE_MS
+          )
+            return;
+
           let magneticHeading = e.webkitCompassHeading || e.alpha;
           if (typeof magneticHeading !== "number" || isNaN(magneticHeading))
             return;
+
           let trueHeading =
             (magneticHeading - state.position.declination + 360) % 360;
+
+          let gridHeading = trueHeading; // Default if no position data
+          if (state.position.current && state.gpx.utmZone) {
+            const userLat = state.position.current.coords.latitude;
+            const userLon = state.position.current.coords.longitude;
+            const lonOrigin = state.gpx.utmZone * 6 - 183;
+            const convergenceRad =
+              toRad(userLon - lonOrigin) * Math.sin(toRad(userLat));
+            const convergence = toDeg(convergenceRad);
+            // Grid Heading = True Heading - Convergence (angle from True North to Grid North)
+            gridHeading = (trueHeading - convergence + 360) % 360;
+          }
+
           let correctedHeading =
-            (trueHeading - state.screen.orientation + 360) % 360;
+            (gridHeading - state.screen.orientation + 360) % 360;
+
           state.position.headingHistory.push(correctedHeading);
           if (
             state.position.headingHistory.length >
@@ -1852,18 +1890,23 @@
             0,
           );
           const avgRad = Math.atan2(sinSum, cosSum);
-          let avgDeg = (toDeg(avgRad) + 360) % 360;
-          state.position.heading = avgDeg;
+          state.position.heading = (toDeg(avgRad) + 360) % 360;
+
           if (
             state.settings.compassInterval > 0 &&
             now - state.position.lastCompassUpdate <
               state.settings.compassInterval
-          )
+          ) {
             return;
+          }
           state.position.lastCompassUpdate = now;
-          if (state.tracking.isOffRoute) updateOffRouteCompass();
-          if (state.position.snapped.point || state.position.current)
+
+          if (state.tracking.isOffRoute) {
+            updateOffRouteCompass();
+          }
+          if (state.position.snapped.point || state.position.current) {
             updateMap();
+          }
         };
 
         const updateDashboard = (speed, distance, time) => {
@@ -2467,6 +2510,7 @@
             zoomLevel: 2,
           });
           stopInterpolation();
+          removeOrientationListener();
           Object.assign(state.rawTracking, {
             log: [],
             tempPoints: [],
@@ -2605,16 +2649,7 @@
           app.invertCompassToggle.addEventListener("change", (e) => {
             state.settings.invertCompass = e.target.checked;
           });
-          const orientationEvent =
-            "ondeviceorientationabsolute" in window
-              ? "deviceorientationabsolute"
-              : "deviceorientation";
-          if (window.DeviceOrientationEvent)
-            window.addEventListener(
-              orientationEvent,
-              handleDeviceOrientation,
-              true,
-            );
+
           app.modal.onclick = (e) => {
             if (
               e.target.classList.contains("modal-close-btn") ||
