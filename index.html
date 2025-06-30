@@ -1011,6 +1011,7 @@
             interpolated: null, // UTM point
             lastSpeed: 0,
             declination: 0,
+            magneticHeading: 0,
             declinationCalculated: false,
           },
           map: {
@@ -1883,6 +1884,8 @@
           if (!e.absolute)
             return;
 
+          state.position.magneticHeading = magneticHeading;
+
           let trueHeading =
             (magneticHeading - state.position.declination + 360) % 360;
 
@@ -1930,8 +1933,8 @@
 
           // Update compass rotation
           const compassRotation = state.settings.invertCompass 
-            ? state.position.heading 
-            : -state.position.heading;
+            ? state.position.magneticHeading
+            : -state.position.magneticHeading;
           app.compassNeedle.style.transform = `rotate(${compassRotation}deg)`;
 
           if (state.tracking.isOffRoute) {
@@ -2534,6 +2537,7 @@
             lastSpeed: 0,
             speedHistory: [],
             declination: 0,
+            magneticHeading: 0,
             declinationCalculated: false,
           });
           Object.assign(state.map, {
