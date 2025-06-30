@@ -1880,6 +1880,9 @@
           if (typeof magneticHeading !== "number" || isNaN(magneticHeading))
             return;
 
+          if (!e.absolute)
+            return;
+
           let trueHeading =
             (magneticHeading - state.position.declination + 360) % 360;
 
