@@ -1013,6 +1013,9 @@
             declination: 0,
             magneticHeading: 0,
             declinationCalculated: false,
+            gpsHeading: null,
+            positionHeading: null,
+            convergence: 0,
           },
           map: {
             mode: "north-up",
@@ -1664,7 +1667,11 @@
         const onGpsSuccess = (position) => {
           try {
             const now = performance.now();
-            const { latitude, longitude } = position.coords;
+            const {
+              latitude,
+              longitude,
+              heading: gpsHeading,
+            } = position.coords;
 
             handleRawGpsLogging(position, Date.now());
 
@@ -1676,14 +1683,45 @@
               state.position.declinationCalculated = true;
             }
 
+            if (state.gpx.utmZone) {
+              const lonOrigin = state.gpx.utmZone * 6 - 183;
+              const convergenceRad =
+                toRad(longitude - lonOrigin) * Math.sin(toRad(latitude));
+              state.position.convergence = toDeg(convergenceRad);
+            }
+
             state.position.current = position;
             state.position.currentUtm = latLonToUtm(latitude, longitude);
 
+            // Find the current snapped position first.
             const closest = findClosestPointOnGpx(state.position.currentUtm);
-            state.position.snapped = {
-              point: closest.point, // This is a UTM point
-              index: closest.index,
-            };
+            const currentSnap = { point: closest.point, index: closest.index };
+
+            // Calculate gpsHeading (true north)
+            if (typeof gpsHeading === "number" && !isNaN(gpsHeading)) {
+              state.position.gpsHeading = gpsHeading;
+            } else if (
+              state.tracking.previousSnap &&
+              state.tracking.previousSnap.point
+            ) {
+              const p1_utm = state.tracking.previousSnap.point;
+              const p2_utm = currentSnap.point;
+
+              const bearingRad = Math.atan2(
+                p2_utm.easting - p1_utm.easting,
+                p2_utm.northing - p1_utm.northing,
+              );
+              const gridBearing = (toDeg(bearingRad) + 360) % 360;
+              const trueBearing =
+                (gridBearing + state.position.convergence + 360) % 360;
+              state.position.positionHeading = trueBearing;
+            } else {
+              state.position.gpsHeading = null;
+              state.position.positionHeading = null;
+            }
+
+            // Now update the state's snapped position for the current frame.
+            state.position.snapped = currentSnap;
 
             const offRouteDistanceMeters = closest.distance;
             state.tracking.isOffRoute = offRouteDistanceMeters > 100;
@@ -1829,9 +1867,7 @@
           const gridBearingRad = Math.atan2(deltaEasting, deltaNorthing);
           const gridBearing = toDeg(gridBearingRad);
 
-          let deviceGridHeading = state.settings.invertCompass
-            ? -state.position.heading
-            : state.position.heading;
+          let deviceGridHeading = state.position.heading;
 
           let arrowRotation = (gridBearing - deviceGridHeading + 360) % 360;
 
@@ -1881,28 +1917,45 @@
           if (typeof magneticHeading !== "number" || isNaN(magneticHeading))
             return;
 
-          if (!e.absolute)
-            return;
+          if (!e.absolute) return;
+
+          magneticHeading = state.settings.invertCompass
+            ? -magneticHeading
+            : magneticHeading;
 
           state.position.magneticHeading = magneticHeading;
 
-          let trueHeading =
-            (magneticHeading - state.position.declination + 360) % 360;
+          let finalGridHeading;
 
-          let gridHeading = trueHeading; // Default if no position data
-          if (state.position.current && state.gpx.utmZone) {
-            const userLat = state.position.current.coords.latitude;
-            const userLon = state.position.current.coords.longitude;
-            const lonOrigin = state.gpx.utmZone * 6 - 183;
-            const convergenceRad =
-              toRad(userLon - lonOrigin) * Math.sin(toRad(userLat));
-            const convergence = toDeg(convergenceRad);
-            // Grid Heading = True Heading - Convergence (angle from True North to Grid North)
-            gridHeading = (trueHeading - convergence + 360) % 360;
+          // Initital heading: (Off-route: Use compass)
+          const compassTrueHeading =
+            (magneticHeading - state.position.declination + 360) % 360;
+          const compassGridHeading =
+            (compassTrueHeading - state.position.convergence + 360) % 360;
+          finalGridHeading = compassGridHeading;
+
+          if (!state.tracking.isOffRoute) {
+            // On-route: Use gps or position based heading first. if unavailable -> use compass heading
+            if (state.position.lastSpeed > 3) {
+              // Prioritize GPS heading if moving at a reasonable speed
+              if (state.position.gpsHeading !== null) {
+                finalGridHeading =
+                  (state.position.gpsHeading -
+                    state.position.convergence +
+                    360) %
+                  360;
+              } else if (state.position.positionHeading !== null) {
+                finalGridHeading =
+                  (state.position.positionHeading -
+                    state.position.convergence +
+                    360) %
+                  360;
+              }
+            }
           }
 
           let correctedHeading =
-            (gridHeading - state.screen.orientation + 360) % 360;
+            (finalGridHeading - state.screen.orientation + 360) % 360;
 
           state.position.headingHistory.push(correctedHeading);
           if (
@@ -1931,11 +1984,7 @@
           }
           state.position.lastCompassUpdate = now;
 
-          // Update compass rotation
-          const compassRotation = state.settings.invertCompass 
-            ? state.position.magneticHeading
-            : -state.position.magneticHeading;
-          app.compassNeedle.style.transform = `rotate(${compassRotation}deg)`;
+          app.compassNeedle.style.transform = `rotate(${state.position.magneticHeading}deg)`;
 
           if (state.tracking.isOffRoute) {
             updateOffRouteCompass();
@@ -2032,9 +2081,7 @@
             let mapGroupTransform = "";
             let markerTransform = "";
 
-            let deviceRotation = state.settings.invertCompass
-              ? -state.position.heading
-              : state.position.heading;
+            let deviceRotation = state.position.heading;
 
             const markerRotation =
               state.map.mode === "head-up" ? 0 : deviceRotation;
@@ -2539,6 +2586,9 @@
             declination: 0,
             magneticHeading: 0,
             declinationCalculated: false,
+            gpsHeading: null,
+            positionHeading: null,
+            convergence: 0,
           });
           Object.assign(state.map, {
             mode: "north-up",
