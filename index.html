@@ -1957,7 +1957,9 @@
             ? -state.position.rawMagneticHeading
             : state.position.rawMagneticHeading;
           state.position.magneticHeading =
-            (state.position.rawMagneticHeading - (state.position.compassError ?? 0) + 360) %
+            (state.position.rawMagneticHeading -
+              (state.position.compassError ?? 0) +
+              360) %
             360;
 
           let finalGridHeading;
@@ -2246,31 +2248,46 @@
             state.interpolation.travelledDistanceMeters * progress;
           let cumulativeDistance = 0;
           let interpolatedPoint = state.interpolation.startPoint;
+          let prevInterpolatedPoint = interpolatedPoint;
 
           for (let i = 0; i < state.interpolation.pathSegment.length - 1; i++) {
             const segmentStart = state.interpolation.pathSegment[i];
             const segmentEnd = state.interpolation.pathSegment[i + 1];
             const segmentLength = cartesianDistance(segmentStart, segmentEnd);
 
+            const distanceIntoSegment = distanceToTravel - cumulativeDistance;
+            const fractionOfSegment =
+              segmentLength === 0 ? 0 : distanceIntoSegment / segmentLength;
+            interpolatedPoint = {
+              easting:
+                segmentStart.easting +
+                (segmentEnd.easting - segmentStart.easting) * fractionOfSegment,
+              northing:
+                segmentStart.northing +
+                (segmentEnd.northing - segmentStart.northing) *
+                  fractionOfSegment,
+            };
             if (cumulativeDistance + segmentLength >= distanceToTravel) {
-              const distanceIntoSegment = distanceToTravel - cumulativeDistance;
-              const fractionOfSegment =
-                segmentLength === 0 ? 0 : distanceIntoSegment / segmentLength;
-              interpolatedPoint = {
-                easting:
-                  segmentStart.easting +
-                  (segmentEnd.easting - segmentStart.easting) *
-                    fractionOfSegment,
-                northing:
-                  segmentStart.northing +
-                  (segmentEnd.northing - segmentStart.northing) *
-                    fractionOfSegment,
-              };
               break;
             }
             cumulativeDistance += segmentLength;
+            prevInterpolatedPoint = interpolatedPoint;
           }
           state.position.interpolated = interpolatedPoint;
+
+          const p1_utm = prevInterpolatedPoint;
+          const p2_utm = interpolatedPoint;
+
+          const bearingRad = Math.atan2(
+            p2_utm.easting - p1_utm.easting,
+            p2_utm.northing - p1_utm.northing,
+          );
+          const gridBearing = (toDeg(bearingRad) + 360) % 360;
+          const trueBearing =
+            (gridBearing + state.position.convergence + 360) % 360;
+          state.position.positionHeading = trueBearing;
+          state.position.heading = trueBearing;
+
           updateMap();
         };
 
