@@ -49,12 +49,12 @@
     <style>
       :root {
         --bg-color: #000000;
-        --primary-text-color: #d3d3d3;
+        --primary-text-color: #817b7b;
         --secondary-text-color: #a9a9a9;
-        --accent-color: #ff6b6b;
+        --accent-color: #ac5454;
         --gpx-track-color: #a9a9a9;
-        --user-path-color: #d3d3d3;
-        --marker-color: #ff6b6b;
+        --user-path-color: rgba(211, 211, 211, 0.43);
+        --marker-color: #ac5454;
         --button-bg-color: #000000;
         --button-active-bg-color: #333333;
         --panel-bg-color: rgba(20, 20, 20, 0.95);
@@ -684,11 +684,11 @@
               />
               <g id="compass-needle" transform-origin="20 20">
                 <polygon points="20,8 22,18 20,20 18,18" fill="#dc2626" />
-                <polygon points="20,32 18,22 20,20 22,22" fill="#666" />
+                <polygon points="20,32 18,22 20,20 22,22" fill="#817b7b" />
               </g>
               <text
                 x="20"
-                y="6"
+                y="9"
                 text-anchor="middle"
                 font-size="6"
                 font-weight="bold"
@@ -1957,7 +1957,9 @@
             ? -state.position.rawMagneticHeading
             : state.position.rawMagneticHeading;
           state.position.magneticHeading =
-            (state.position.rawMagneticHeading - (state.position.compassError ?? 0) + 360) %
+            (state.position.rawMagneticHeading -
+              (state.position.compassError ?? 0) +
+              360) %
             360;
 
           let finalGridHeading;
