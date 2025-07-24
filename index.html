@@ -1976,7 +1976,7 @@
 
           if (!state.tracking.isOffRoute) {
             // On-route: Use gps or position based heading first. if unavailable -> use compass heading
-            if (state.position.lastSpeed > 3) {
+            if (state.position.lastSpeed > 12) {
               // Prioritize GPS heading if moving at a reasonable speed
               if (state.position.gpsHeading !== null) {
                 finalGridHeading =
