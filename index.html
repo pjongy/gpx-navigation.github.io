@@ -769,6 +769,13 @@
           data-i18n="openGpxFile"
           >GPX 파일 열기</label
         ><input type="file" id="gpx-file-input" accept=".gpx" />
+        <button
+          class="menu-btn"
+          data-action="reverse-gpx"
+          data-i18n="reverseGpx"
+        >
+          경로 방향 뒤집기
+        </button>
       </div>
       <div class="menu-section">
         <h3 data-i18n="journeyLog">여정 기록</h3>
@@ -1193,6 +1200,7 @@
             avgSpeed: "평균 속력",
             fileManagement: "파일 관리",
             openGpxFile: "GPX 파일 열기",
+            reverseGpx: "경로 방향 뒤집기",
             journeyLog: "여정 기록",
             startTracking: "추적 시작",
             stopTracking: "추적 중지",
@@ -1239,6 +1247,7 @@
             avgSpeed: "Avg. Speed",
             fileManagement: "File Management",
             openGpxFile: "Open GPX File",
+            reverseGpx: "Reverse Route Direction",
             journeyLog: "Journey Log",
             startTracking: "Start Tracking",
             stopTracking: "Stop Tracking",
@@ -2534,6 +2543,33 @@
                   hideModal();
                 }
               }, 2000);
+              break;
+            case "reverse-gpx":
+              if (state.gpx.points.length === 0) {
+                showModal("alert", "noGpxFile");
+                break;
+              }
+
+              // Reverse the GPX points array
+              state.gpx.points.reverse();
+
+              // Re-render the track with new direction
+              renderGpxTrack();
+              calculateGpxBounds();
+
+              // Reset position snapping since route direction changed
+              state.position.snapped = { point: null, index: -1 };
+              state.tracking.previousSnap = null;
+
+              // Update map if needed
+              if (state.gpx.points.length > 0) {
+                setZoom(state.map.zoomLevel);
+                updateMap();
+              }
+
+              // Close menu
+              app.menuPanel.classList.remove("open");
+              app.menuOverlay.classList.remove("open");
               break;
             case "center-map":
               state.map.isCentered = true;
