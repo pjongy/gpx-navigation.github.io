@@ -795,7 +795,8 @@
             >GPS 갱신 주기 (초)</label
           ><select id="update-interval">
             <option value="1000">1</option>
-            <option value="5000" selected>5</option>
+            <option value="2000" selected>2</option>
+            <option value="5000">5</option>
             <option value="15000">15</option>
             <option value="30000">30</option>
             <option value="60000">60</option>
@@ -1045,7 +1046,7 @@
           },
           screen: { orientation: 0 },
           settings: {
-            updateInterval: 5000,
+            updateInterval: 2000,
             compassInterval: 500,
             language: "ko",
             invertCompass: true,
@@ -1856,8 +1857,15 @@
               `${userPathD}${userPathD ? "L" : "M"}${newPointUtm.easting},${-newPointUtm.northing}`,
             );
 
+            // Calculate average speed for display from last 3 values
+            const displaySpeed =
+              state.position.speedHistory.length > 0
+                ? state.position.speedHistory.reduce((a, b) => a + b, 0) /
+                  state.position.speedHistory.length
+                : state.position.lastSpeed;
+
             updateDashboard(
-              state.position.lastSpeed,
+              displaySpeed,
               state.tracking.totalDistance,
               state.tracking.elapsedTime,
             );
@@ -2679,10 +2687,10 @@
               ? "ko"
               : "en";
             state.settings.language = defaultLang;
-            state.settings.updateInterval = 5000;
+            state.settings.updateInterval = 2000;
             state.settings.compassInterval = 500;
             state.settings.invertCompass = true;
-            app.updateIntervalSelect.value = "5000";
+            app.updateIntervalSelect.value = "2000";
             app.compassIntervalSelect.value = "500";
             app.invertCompassToggle.checked = true;
             setLanguage(defaultLang);
