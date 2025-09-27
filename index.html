@@ -2521,7 +2521,19 @@
               ]);
               break;
             case "retry-wakelock":
+              // Close the hamburger menu
+              app.menuPanel.classList.remove("open");
+              app.menuOverlay.classList.remove("open");
+
+              // Request wake lock with feedback
               requestWakeLock(true);
+
+              // Auto-close modal after 2 seconds if it's a success modal
+              setTimeout(() => {
+                if (app.modal.classList.contains("show")) {
+                  hideModal();
+                }
+              }, 2000);
               break;
             case "center-map":
               state.map.isCentered = true;
