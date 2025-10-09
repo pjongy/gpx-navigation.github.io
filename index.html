@@ -130,7 +130,7 @@
       #dashboard {
         flex-grow: 1;
         display: grid;
-        grid-template-rows: 1fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
         min-height: 0;
@@ -156,8 +156,24 @@
       #avg-speed-box {
         grid-column: 2 / 3;
       }
-      #gradient-box {
-        grid-column: 1 / 3;
+      #speed-box {
+        position: relative;
+      }
+      #gradient-display {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        font-size: clamp(0.7em, 2.5vw, 1em);
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      #gradient-display .gradient-label {
+        color: var(--secondary-text-color);
+        font-size: 0.85em;
+      }
+      #gradient-display .gradient-value {
+        font-weight: bold;
       }
       .value {
         font-size: clamp(1.5em, 5vw, 2.2em);
@@ -610,6 +626,13 @@
               <span class="value" id="speed-value">0</span
               ><span class="unit">km/h</span>
             </div>
+            <div id="gradient-display">
+              <span class="gradient-label" data-i18n="currentGradient"
+                >현재 경사도</span
+              >
+              <span class="gradient-value" id="gradient-value">-</span>
+              <span class="gradient-unit">%</span>
+            </div>
           </div>
           <div class="info-box" id="journey-box">
             <div class="sub-info-box" id="distance-sub-box">
@@ -637,13 +660,6 @@
             <div>
               <span class="value" id="avg-speed-value">0.0</span
               ><span class="unit">km/h</span>
-            </div>
-          </div>
-          <div class="info-box" id="gradient-box">
-            <div class="label" data-i18n="currentGradient">현재 경사도</div>
-            <div>
-              <span class="value" id="gradient-value">-</span
-              ><span class="unit">%</span>
             </div>
           </div>
         </div>
