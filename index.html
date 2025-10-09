@@ -130,7 +130,7 @@
       #dashboard {
         flex-grow: 1;
         display: grid;
-        grid-template-rows: 1fr 1fr;
+        grid-template-rows: 1fr 1fr 1fr;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
         min-height: 0;
@@ -155,6 +155,9 @@
       }
       #avg-speed-box {
         grid-column: 2 / 3;
+      }
+      #gradient-box {
+        grid-column: 1 / 3;
       }
       .value {
         font-size: clamp(1.5em, 5vw, 2.2em);
@@ -636,6 +639,13 @@
               ><span class="unit">km/h</span>
             </div>
           </div>
+          <div class="info-box" id="gradient-box">
+            <div class="label" data-i18n="currentGradient">현재 경사도</div>
+            <div>
+              <span class="value" id="gradient-value">-</span
+              ><span class="unit">%</span>
+            </div>
+          </div>
         </div>
       </div>
       <div id="map-container">
@@ -973,6 +983,7 @@
           distanceUnitSeparator: $("#distance-unit-separator"),
           avgSpeedValue: $("#avg-speed-value"),
           timeValue: $("#time-value"),
+          gradientValue: $("#gradient-value"),
           mapSvg: $("#map-svg"),
           mapGroup: $("#map-group"),
           gpxTrackContainer: $("#gpx-track-container"),
@@ -1198,6 +1209,7 @@
             totalDistance: "누적/총 거리",
             totalTime: "누적 시간",
             avgSpeed: "평균 속력",
+            currentGradient: "현재 경사도",
             fileManagement: "파일 관리",
             openGpxFile: "GPX 파일 열기",
             reverseGpx: "경로 방향 뒤집기",
@@ -1245,6 +1257,7 @@
             totalDistance: "Distance / Total",
             totalTime: "Time",
             avgSpeed: "Avg. Speed",
+            currentGradient: "Current Gradient",
             fileManagement: "File Management",
             openGpxFile: "Open GPX File",
             reverseGpx: "Reverse Route Direction",
@@ -1879,10 +1892,27 @@
                   state.position.speedHistory.length
                 : state.position.lastSpeed;
 
+            // Calculate current gradient
+            let currentGradient = null;
+            if (state.position.snapped && state.position.snapped.index >= 0) {
+              const index = state.position.snapped.index;
+              if (index < state.gpx.points.length - 1) {
+                const p1 = state.gpx.points[index];
+                const p2 = state.gpx.points[index + 1];
+                const elevationChange = p2.ele - p1.ele;
+                const horizontalDistance = cartesianDistance(p1.utm, p2.utm);
+                currentGradient =
+                  horizontalDistance > 0
+                    ? (elevationChange / horizontalDistance) * 100
+                    : 0;
+              }
+            }
+
             updateDashboard(
               displaySpeed,
               state.tracking.totalDistance,
               state.tracking.elapsedTime,
+              currentGradient,
             );
             updateMap();
           } catch (e) {
@@ -2061,11 +2091,18 @@
           }
         };
 
-        const updateDashboard = (speed, distance, time) => {
+        const updateDashboard = (speed, distance, time, gradient = null) => {
           app.speedValue.textContent = (speed || 0).toFixed(1);
           app.distanceValue.textContent = distance.toFixed(2);
           app.avgSpeedValue.textContent =
             time > 0 ? (distance / (time / 3600)).toFixed(1) : "0.0";
+          if (gradient !== null) {
+            app.gradientValue.textContent = gradient.toFixed(1);
+            app.gradientValue.style.color = getGradientColor(gradient);
+          } else {
+            app.gradientValue.textContent = "-";
+            app.gradientValue.style.color = "";
+          }
         };
 
         const updateTimer = () => {
