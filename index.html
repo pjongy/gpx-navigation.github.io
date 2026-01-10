@@ -1253,6 +1253,9 @@
             fileReadError: "파일을 읽는 도중 오류가 발생했습니다.",
             permissionDenied:
               "GPS 권한이 차단되었습니다. 브라우저 설정에서 위치 권한을 허용해주세요.",
+            compassPermissionDenied:
+              "나침반 사용 권한이 거부되었습니다. 설정에서 권한을 허용해주세요.",
+            compassPermissionError: "나침반 권한 요청 실패",
             gpsError: "위치 정보를 가져올 수 없습니다.",
             noGpxFile: "먼저 GPX 파일을 로드해주세요.",
             noJourneyData: "저장할 여정 기록이 없습니다.",
@@ -1301,6 +1304,9 @@
             fileReadError: "An error occurred while reading the file.",
             permissionDenied:
               "GPS permission denied. Please enable it in your browser settings.",
+            compassPermissionDenied:
+              "Compass permission denied. Please enable it in settings.",
+            compassPermissionError: "Compass permission request failed",
             gpsError: "Could not retrieve location information.",
             noGpxFile: "Please load a GPX file first.",
             noJourneyData: "There is no journey data to save.",
@@ -1594,7 +1600,18 @@
         const toggleTracking = async () => {
           if (state.gpx.points.length === 0)
             return showModal("alert", "noGpxFile");
-          state.tracking.isActive ? stopTracking() : await startTracking();
+
+          if (!state.tracking.isActive) {
+            // Request compass permission FIRST, inside user gesture context (iOS requirement)
+            const compassOK = await requestCompassPermission();
+            if (!compassOK) {
+              console.warn("[Compass] Permission denied or failed");
+              // Continue anyway - GPS and other features will still work
+            }
+            await startTracking();
+          } else {
+            stopTracking();
+          }
         };
 
         const startTracking = async () => {
@@ -1735,7 +1752,7 @@
 
             if (accuracy > 30) {
               // NOTE: gps circle exceed 30 meter
-              return
+              return;
             }
 
             handleRawGpsLogging(position, Date.now());
@@ -1766,11 +1783,14 @@
             // Calculate gpsHeading (true north)
             if (!isNaN(gpsHeading) && rawGpsHeading != null) {
               state.position.gpsHeading = gpsHeading;
-              // GPS-Compass Calibration
+              // GPS-Compass Calibration: Compare magnetic headings
+              // GPS heading is true north, convert to magnetic north for comparison
+              const gpsMagneticHeading =
+                (gpsHeading + state.position.declination + 360) % 360;
               const currentMagneticHeading =
                 state.position.rawMagneticHeading ?? 0;
 
-              const compassError = currentMagneticHeading - gpsHeading;
+              const compassError = currentMagneticHeading - gpsMagneticHeading;
               state.position.compassError = compassError;
             } else {
               state.position.gpsHeading = null;
@@ -1984,14 +2004,57 @@
             ? "deviceorientationabsolute"
             : "deviceorientation";
 
-        const addOrientationListener = () => {
-          if (window.DeviceOrientationEvent) {
-            window.addEventListener(
-              orientationEvent,
-              handleDeviceOrientation,
-              true,
-            );
+        // Request compass permission (must be called in user gesture context on iOS)
+        const requestCompassPermission = async () => {
+          console.log("[Compass] Requesting permission...");
+
+          if (!window.DeviceOrientationEvent) {
+            console.error("[Compass] DeviceOrientationEvent not supported");
+            return false;
           }
+
+          // iOS 13+ requires explicit permission request
+          if (typeof DeviceOrientationEvent.requestPermission === "function") {
+            console.log("[Compass] iOS detected, requesting permission...");
+            try {
+              const permissionState =
+                await DeviceOrientationEvent.requestPermission();
+              console.log("[Compass] Permission state:", permissionState);
+
+              if (permissionState === "granted") {
+                console.log("[Compass] Permission granted");
+                return true;
+              } else {
+                console.warn("[Compass] Permission denied");
+                alert(i18n[state.settings.language].compassPermissionDenied);
+                return false;
+              }
+            } catch (error) {
+              console.error("[Compass] Error requesting permission:", error);
+              alert(i18n[state.settings.language].compassPermissionError + ": " + error.message);
+              return false;
+            }
+          } else {
+            // Android and older iOS versions - no permission needed
+            console.log("[Compass] No permission needed (Android/old iOS)");
+            return true;
+          }
+        };
+
+        const addOrientationListener = () => {
+          console.log("[Compass] Adding orientation listener...");
+
+          if (!window.DeviceOrientationEvent) {
+            console.error("[Compass] DeviceOrientationEvent not supported");
+            return;
+          }
+
+          window.addEventListener(
+            orientationEvent,
+            handleDeviceOrientation,
+            true,
+          );
+          console.log("[Compass] Listener added successfully");
         };
 
         const removeOrientationListener = () => {
@@ -2012,19 +2075,39 @@
           )
             return;
 
-          const rawMagneticHeading = e.webkitCompassHeading || e.alpha;
+          let rawMagneticHeading = null;
+          let isIOS = false;
+
+          // iOS provides webkitCompassHeading (magnetic north, 0-360)
           if (
+            e.webkitCompassHeading !== undefined &&
+            e.webkitCompassHeading !== null
+          ) {
+            rawMagneticHeading = e.webkitCompassHeading;
+            isIOS = true;
+          }
+          // Android provides alpha (true north when absolute, 0-360)
+          else if (e.alpha !== undefined && e.alpha !== null && e.absolute) {
+            // Convert from true north to magnetic north for consistency
+            rawMagneticHeading =
+              (e.alpha + state.position.declination + 360) % 360;
+            isIOS = false;
+          }
+
+          if (
+            rawMagneticHeading === null ||
             typeof rawMagneticHeading !== "number" ||
             isNaN(rawMagneticHeading)
-          )
+          ) {
             return;
+          }
 
-          if (!e.absolute) return;
-
-          state.position.rawMagneticHeading = rawMagneticHeading;
+          // Apply compass inversion if needed
           state.position.rawMagneticHeading = state.settings.invertCompass
-            ? -state.position.rawMagneticHeading
-            : state.position.rawMagneticHeading;
+            ? (360 - rawMagneticHeading) % 360
+            : rawMagneticHeading;
+
+          // Apply compass error calibration (from GPS)
           state.position.magneticHeading =
             (state.position.rawMagneticHeading -
               (state.position.compassError ?? 0) +
@@ -2033,7 +2116,7 @@
 
           let finalGridHeading;
 
-          // Initital heading: (Off-route: Use compass)
+          // Calculate compass true heading and grid heading
           const compassTrueHeading =
             (state.position.magneticHeading -
               state.position.declination +
@@ -2093,10 +2176,8 @@
           }
           state.position.lastCompassUpdate = now;
 
+          // Compass needle shows magnetic heading (inversion already applied in rawMagneticHeading)
           let compassNeedleHeading = state.position.magneticHeading;
-          compassNeedleHeading = state.settings.invertCompass
-            ? -compassNeedleHeading
-            : compassNeedleHeading;
           app.compassNeedle.style.transform = `rotate(${compassNeedleHeading}deg)`;
 
           if (state.tracking.isOffRoute) {
@@ -2927,6 +3008,12 @@
 
         init();
       });
+    </script>
+    <!-- Eruda: Mobile debugging console -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+      eruda.init();
+      eruda.position({ x: 0, y: 0 }); // Position at top-left
     </script>
   </body>
 </html>
