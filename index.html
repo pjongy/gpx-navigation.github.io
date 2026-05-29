@@ -545,7 +545,11 @@
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
       }
       #compass-icon {
+        /* Compass container */
+      }
+      #compass-needle {
         transition: transform 0.3s ease-out;
+        transform-origin: 20px 20px;
       }
       #scale-container {
         display: flex;
@@ -708,7 +712,7 @@
                 stroke="rgba(0, 0, 0, 0.3)"
                 stroke-width="1"
               />
-              <g id="compass-needle" transform-origin="20 20">
+              <g id="compass-needle">
                 <polygon points="20,8 22,18 20,20 18,18" fill="#dc2626" />
                 <polygon points="20,32 18,22 20,20 22,22" fill="#817b7b" />
               </g>
@@ -1083,7 +1087,7 @@
             updateInterval: 2000,
             compassInterval: 500,
             language: "ko",
-            invertCompass: true,
+            invertCompass: false,
           },
           permissions: { gps: "prompt" },
           wakeLock: null,
@@ -2178,7 +2182,7 @@
 
           // Compass needle shows magnetic heading (inversion already applied in rawMagneticHeading)
           let compassNeedleHeading = state.position.magneticHeading;
-          app.compassNeedle.style.transform = `rotate(${compassNeedleHeading}deg)`;
+          app.compassNeedle.style.transform = `rotate(${-compassNeedleHeading}deg)`;
 
           if (state.tracking.isOffRoute) {
             updateOffRouteCompass();
@@ -2877,10 +2881,10 @@
             state.settings.language = defaultLang;
             state.settings.updateInterval = 2000;
             state.settings.compassInterval = 500;
-            state.settings.invertCompass = true;
+            state.settings.invertCompass = false;
             app.updateIntervalSelect.value = "2000";
             app.compassIntervalSelect.value = "500";
-            app.invertCompassToggle.checked = true;
+            app.invertCompassToggle.checked = false;
             setLanguage(defaultLang);
             showModal("alert", "resetSuccess");
           }
@@ -2947,8 +2951,8 @@
         const init = () => {
           const userLang = navigator.language.startsWith("ko") ? "ko" : "en";
           setLanguage(userLang);
-          app.invertCompassToggle.checked = true;
-          state.settings.invertCompass = true;
+          app.invertCompassToggle.checked = false;
+          state.settings.invertCompass = false;
           checkGpsPermission();
           handleOrientationChange();
           window.addEventListener("orientationchange", handleOrientationChange);
